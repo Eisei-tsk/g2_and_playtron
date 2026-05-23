@@ -22,9 +22,56 @@ body {
 .conduct-root {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 1rem;
   align-items: center;
   justify-content: center;
   height: 100%;
   text-align: center;
+}
+
+.conduct-root h1 {
+  margin: 0;
+  font-weight: 300;
+  letter-spacing: 0.3em;
+}
+
+.start-btn {
+  background: transparent;
+  color: #9effa0;
+  border: 1px solid #2f6f31;
+  border-radius: 6px;
+  padding: 0.8rem 2rem;
+  font: inherit;
+  font-size: 1.1rem;
+  letter-spacing: 0.2em;
+  cursor: pointer;
+}
+
+.start-btn:hover {
+  background: #0c1f0c;
+}
+
+.status {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #777;
+  letter-spacing: 0.1em;
+}
+
+.status.ok {
+  color: #9effa0;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.notes {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #9effa0;
+  min-height: 1.8rem;
+  letter-spacing: 0.1em;
 }
