@@ -18,9 +18,9 @@
 
 | 項目 | 状態 |
 |---|---|
-| フェーズ | 準備（フェーズ0）完了 → フェーズ1 着手前 |
-| 直近の作業 | ベース雛形作成（React + TS + Vite）・依存導入・`npm run build` 検証済み |
-| ブランチ | `first_commit`（開発準備ブランチ）|
+| フェーズ | フェーズ1 進行中（ステップ1 完了）|
+| 直近の作業 | MIDIブリッジ実機確認OK。ノード識別=note番号 / ch=0固定 / vel=90、2ポート購読 |
+| ブランチ | `feature/midi-bridge` |
 | Node / TS | 22.22.1（`.node-version`）/ TypeScript ~5.9 |
 
 ---
@@ -36,8 +36,8 @@
 
 ## フェーズ1 — Web アプリ
 
-- [ ] 1. Node.js ブリッジサーバー（WebMIDI → WebSocket）
-- [ ] 2. キーボードシミュレーターモード（Playtron なしでのテスト）
+- [x] 1. Node.js ブリッジサーバー（easymidi → WebSocket, 両ポート購読）— 実機確認OK
+- [ ] 2. キーボードシミュレーターモード — 実機(Playtron)があるため保留。必要になれば追加
 - [ ] 3. Tone.js 基本構成（スケール・パッド・リバーブ）
 - [ ] 4. タッチ時間による音の展開ロジック
 - [ ] 5. チャンネル別音色の割り当て
@@ -61,3 +61,4 @@
 |---|---|---|
 | 2026-05-23 | フェーズ0 | 流用元（g2_fishing）のドキュメントを Conduct 用に全面書き換え。README/SECURITY を差し替え、CLAUDE.md に §0（プロジェクト固有）を追加。PROGRESS.md を新規作成し進捗管理を開始 |
 | 2026-05-23 | フェーズ0 | セキュリティ設定（.npmrc / .claude/settings.json / .gitignore）と Vite+React+TS ベース雛形を作成。Node 22.22.1 固定、TS は evenhub-cli の peer(`^5`) に合わせ ~5.9 を採用。`npm install`（脆弱性0）・`npm run build` 検証 OK |
+| 2026-05-23 | フェーズ1 / S1 | MIDIブリッジ（easymidi → WebSocket, localhost:8080）実装。実機(Playtron)で確認 → デバイス名 "Playtron ポート1/2"、**ノード識別は note 番号**（ch=0 固定）、**vel=90 固定**。両ポート購読・USB後挿し再スキャン対応。spec / CLAUDE の MIDI 仕様を実測値へ更新 |
