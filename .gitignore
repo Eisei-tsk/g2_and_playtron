@@ -141,3 +141,20 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# --- Conduct project (SECURITY.md §4) ---
+# シークレット・秘密鍵・証明書
+secrets/
+*.key
+*.pem
+*.crt
+credentials.json
+
+# Claude Code ローカル設定（チーム共有しない個人設定）
+.claude/settings.local.json
+
+# Even Hub パッケージ成果物
+*.ehpk
+
+# macOS
+.DS_Store
