@@ -18,10 +18,11 @@
 
 | 項目 | 状態 |
 |---|---|
-| フェーズ | フェーズ1 進行中（ステップ4 完了）|
-| 直近の作業 | 生成音楽エンジン（待機ビープ→触れて自律ベッド育成＋触れた音をエッセンスとして展開）|
-| ブランチ | `feature/audio-evolution` |
+| フェーズ | フェーズ2 着手準備（G2 ビジュアル）|
+| 直近の作業 | Even SDK/CLI/Simulator を最新へ更新・調査（G2 開発の前段）|
+| ブランチ | `feature/g2-visuals` |
 | Node / TS | 22.22.1（`.node-version`）/ TypeScript ~5.9 |
+| Even 版 | SDK 0.0.10 / CLI 0.1.13 / Simulator 0.7.3 |
 
 ---
 
@@ -46,7 +47,7 @@
 
 ## フェーズ2 — G2 連携
 
-- [ ] 0. **G2 SDK / CLI / Simulator のアップデート調査**（釣りゲーム開発時から更新が入っている可能性が高い。最新版と changelog を確認し、API 変更を踏まえてから着手）
+- [x] 0. **G2 SDK / CLI / Simulator のアップデート調査・更新**（2026-06）。SDK 0.0.10 / CLI 0.1.13 / Simulator 0.7.3 へ。SDK 型定義は差分ゼロ（API 変更なし）。Simulator に `--automation-port`（HTTP 自動化 API: G2 スクショ/入力/console）。CLAUDE.md 反映済み
 - [ ] 1. Even Hub WebApp として構成（G2 SDK 接続）
 - [ ] 2. IMU 取得・Tone.js パラメータ連動
 - [ ] 3. G2 用 ASCII テキスト表示の実装
@@ -64,3 +65,4 @@
 | 2026-05-23 | フェーズ1 / S1 | MIDIブリッジ（easymidi → WebSocket, localhost:8080）実装。実機(Playtron)で確認 → デバイス名 "Playtron ポート1/2"、**ノード識別は note 番号**（ch=0 固定）、**vel=90 固定**。両ポート購読・USB後挿し再スキャン対応。spec / CLAUDE の MIDI 仕様を実測値へ更新 |
 | 2026-05-23 | フェーズ1 / S3 | WSクライアント(src/ws)・Tone.js 音響エンジン(src/audio: ペンタトニック量子化 + パッド/AMSynth + リバーブ)・App 配線・キーボード fallback(1–9 hold/release)を実装。キーボード・**Playtron 実機の両方で発音確認**・bridge:connected 確認。build / dev 検証 OK |
 | 2026-05-24 | フェーズ1 / S4 | 生成音楽エンジンへ刷新。3層モデル: 待機(うっすら短いビープ)→触れて development(0→1, ~10s)で自律ベッド(コード進行 明↔暗+パッド/ベース/旋律/アルペジオ)が育つ＋触れた音をペンタ吸着でエッセンスとして上に乗せる。離すと待機へ減衰。第一版採用（音作りは今後調整の可能性あり）|
+| 2026-06-14 | フェーズ2 / S0 | Even SDK/CLI/Simulator を調査・最新化（SDK 0.0.9→0.0.10 / CLI 0.1.11→0.1.13 / Sim 0.7.2→0.7.3）。SDK 型定義は差分ゼロ＝API 変更なし。Simulator `--automation-port`（`/api/screenshot/glasses` 576×288 PNG, `/api/input`, `/api/console`）を把握＝撮影ワークフローに活用可。build 検証 OK・脆弱性0。CLAUDE.md のバージョン/履歴/Simulator 節を更新 |
