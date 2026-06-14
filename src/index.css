@@ -111,3 +111,37 @@ body {
 .layer.on {
   color: #9effa0;
 }
+
+.world {
+  display: flex;
+  gap: 1.5rem;
+  font-size: 0.8rem;
+  color: #888;
+  letter-spacing: 0.08em;
+}
+
+.arc {
+  font-size: 0.8rem;
+  color: #9a9a9a;
+  letter-spacing: 0.08em;
+}
+
+.meter.arcbar {
+  width: 220px;
+  height: 5px;
+  background: #14140a;
+}
+
+.meter.arcbar .meter-fill {
+  background: #c8b85a;
+}
+
+.meter.tide {
+  width: 160px;
+  height: 4px;
+  background: #11140f;
+}
+
+.meter.tide .meter-fill {
+  background: #3a6f4a;
+}
