@@ -10,7 +10,7 @@
     "bridge": "node bridge/bridge.js"
   },
   "dependencies": {
-    "@evenrealities/even_hub_sdk": "^0.0.9",
+    "@evenrealities/even_hub_sdk": "^0.0.10",
     "easymidi": "^3.1.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
@@ -18,7 +18,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@evenrealities/evenhub-cli": "0.1.11",
+    "@evenrealities/evenhub-cli": "0.1.13",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

@@ -22,7 +22,20 @@ function App() {
   const [audioReady, setAudioReady] = useState(false)
   const [connected, setConnected] = useState(false)
   const [active, setActive] = useState<number[]>([])
-  const [prog, setProg] = useState({ touches: 0, development: 0, chord: '—' })
+  const [prog, setProg] = useState({
+    touches: 0,
+    development: 0,
+    chord: '—',
+    tide: 0,
+    brightness: 0,
+    gesture: '—',
+    echoes: 0,
+    arc: 0,
+    arcSeconds: 0,
+    stage: 0,
+    section: 'intro',
+    breadth: 0,
+  })
   const activeRef = useRef<Set<number>>(new Set())
 
   const handleNote = (note: number, on: boolean) => {
@@ -112,6 +125,23 @@ function App() {
                 {prog.development >= l.th ? '●' : '○'} {l.name}
               </span>
             ))}
+          </div>
+
+          <div className="world">
+            <span>gesture: {prog.gesture}</span>
+            <span>echoes: {prog.echoes}</span>
+            <span>objects: {prog.breadth}/16</span>
+          </div>
+
+          <div className="arc">
+            <span>{prog.section} · stage {prog.stage} · {Math.floor(prog.arcSeconds)}s</span>
+          </div>
+          <div className="meter arcbar" title="発展の蓄積（arc）">
+            <div className="meter-fill" style={{ width: `${Math.round(prog.arc * 100)}%` }} />
+          </div>
+
+          <div className="meter tide" title="世界の潮（息遣い）">
+            <div className="meter-fill" style={{ width: `${Math.round(prog.tide * 100)}%` }} />
           </div>
         </>
       )}
