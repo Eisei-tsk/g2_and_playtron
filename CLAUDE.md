@@ -235,7 +235,8 @@ npm install -g @evenrealities/evenhub-simulator   # シミュレーター（現�
 | **SDK** | 0.0.7 | 2026-02-11 | — |
 | | 0.0.8 | 2026-03-25 | launch source 検知、IMU 制御、`borderRadius` 修正、コンテナ上限 4→12 に拡張、画像最大 288×144（README 記載値） |
 | | 0.0.9 | 2026-03-25 | `EventSourceType` 互換性改善、デフォルト source enum フォールバック |
-| | **0.0.10** | **2026-04-10** | **本プロジェクト採用。** WebView バックグラウンド維持（keep-alive）の強化。**型定義は v0.0.9 と完全一致＝ API 変更なし**（実装のみ） |
+| | **0.0.10** | **2026-04-10** | **本プロジェクト採用中。** WebView バックグラウンド維持（keep-alive）の強化。**型定義は v0.0.9 と完全一致＝ API 変更なし**（実装のみ） |
+| | 0.0.11 | 2026-06-22 | **公開直後のため保留（`min-release-age=7` でブロック）。** 追加のみ・破壊的変更なし: **App 位置 API**（`getAppLocation`/`startAppLocationUpdates`/`onAppLocationChanged`＝GPS archetype 構想に直結）、アルバム画像ピッカー、カメラ撮影 API、マイク音源選択（`glasses`/`phone`、`audioControl(isOpen, source?)` に任意引数追加）。**7日経過後・GPS フェーズ着手時に採用検討** |
 | **CLI** | 0.1.9 | 2026-03-21 | app.json サイズ制限調整 |
 | | 0.1.10 | 2026-03-24 | app.json 制約微調整（公式ドキュメント記載バージョン） |
 | | 0.1.11 | 2026-03-25 | Windows のパッキング不具合修正 |
