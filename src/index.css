@@ -17,19 +17,25 @@ body {
   background: #000;
   color: #e6e6e6;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow: hidden;
 }
 
 .conduct-root {
+  height: 100%;
+}
+
+/* 起動画面 */
+.start-screen {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.5rem;
   align-items: center;
   justify-content: center;
   height: 100%;
   text-align: center;
 }
 
-.conduct-root h1 {
+.start-screen h1 {
   margin: 0;
   font-weight: 300;
   letter-spacing: 0.3em;
@@ -51,85 +57,61 @@ body {
   background: #0c1f0c;
 }
 
-.status {
-  margin: 0;
-  font-size: 0.85rem;
+/* 信号フィールド（全画面背景） */
+.signal-canvas {
+  position: fixed;
+  inset: 0;
+  display: block;
+}
+
+/* デバッグ情報（隅の小パネル・d で切替） */
+.debug {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.72rem;
+  color: #6f8f75;
+  pointer-events: none;
+  text-shadow: 0 0 4px #000;
+}
+
+.debug .status {
   color: #777;
-  letter-spacing: 0.1em;
 }
 
-.status.ok {
+.debug .status.ok {
   color: #9effa0;
 }
 
-.hint {
-  margin: 0;
-  font-size: 0.8rem;
-  color: #666;
-}
-
-.notes {
-  margin: 0;
-  font-size: 1.5rem;
+.debug .notes {
   color: #9effa0;
-  min-height: 1.8rem;
-  letter-spacing: 0.1em;
-}
-
-.state {
-  margin: 0;
   font-size: 0.9rem;
+}
+
+.debug .state {
   color: #cfcfcf;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.08em;
+}
+
+.debug .world {
+  display: flex;
+  gap: 0.8rem;
 }
 
 .meter {
-  width: 220px;
-  height: 6px;
-  background: #1a1a1a;
-  border-radius: 3px;
+  width: 160px;
+  height: 4px;
+  background: #14140a;
+  border-radius: 2px;
   overflow: hidden;
 }
 
 .meter-fill {
   height: 100%;
-  background: #9effa0;
   transition: width 0.12s linear;
-}
-
-.layers {
-  display: flex;
-  gap: 1.2rem;
-  font-size: 0.9rem;
-}
-
-.layer {
-  color: #555;
-  letter-spacing: 0.05em;
-}
-
-.layer.on {
-  color: #9effa0;
-}
-
-.world {
-  display: flex;
-  gap: 1.5rem;
-  font-size: 0.8rem;
-  color: #888;
-  letter-spacing: 0.08em;
-}
-
-.arc {
-  font-size: 0.8rem;
-  color: #9a9a9a;
-  letter-spacing: 0.08em;
-}
-
-.meter.arcbar {
-  width: 220px;
-  height: 5px;
-  background: #14140a;
 }
 
 .meter.arcbar .meter-fill {
@@ -137,8 +119,6 @@ body {
 }
 
 .meter.tide {
-  width: 160px;
-  height: 4px;
   background: #11140f;
 }
 

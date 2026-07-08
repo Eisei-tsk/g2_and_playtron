@@ -156,5 +156,8 @@ credentials.json
 # Even Hub パッケージ成果物
 *.ehpk
 
+# 参照用のサンプル動画（重い画面収録。リポジトリに載せない）
+src/sample_video/
+
 # macOS
 .DS_Store
