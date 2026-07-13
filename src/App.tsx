@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { connectBridge, type NoteMessage } from './ws/bridgeClient'
 import { startAudio, noteOn, noteOff, isStarted, getProgress } from './audio/engine'
 import SignalCanvas from './visual/SignalCanvas'
+import { initG2, stopG2, getG2Status, type G2Status } from './glasses/g2'
 
 // キーボード fallback: 1–9 を MIDI ノートにマップ（押下=on / 離す=off）。
 const KEY_NOTES: Record<string, number> = {
@@ -15,6 +16,7 @@ const KEY_NOTES: Record<string, number> = {
 function App() {
   const [audioReady, setAudioReady] = useState(false)
   const [connected, setConnected] = useState(false)
+  const [g2, setG2] = useState<G2Status>('idle')
   const [showDebug, setShowDebug] = useState(true)
   const [active, setActive] = useState<number[]>([])
   const [prog, setProg] = useState({
@@ -46,6 +48,16 @@ function App() {
     }
     setActive([...activeRef.current])
   }
+
+  // G2 グラス接続（Even Hub / シミュレーター内でのみ成立。素のブラウザは unavailable）
+  useEffect(() => {
+    initG2().finally(() => setG2(getG2Status()))
+    const id = setInterval(() => setG2(getG2Status()), 1000)
+    return () => {
+      clearInterval(id)
+      stopG2()
+    }
+  }, [])
 
   // ブリッジ(WebSocket)受信
   useEffect(() => {
@@ -107,7 +119,7 @@ function App() {
           {showDebug && (
             <div className="debug">
               <div className={connected ? 'status ok' : 'status'}>
-                bridge: {connected ? 'connected' : 'disconnected'}
+                bridge: {connected ? 'connected' : 'disconnected'} · g2: {g2}
               </div>
               <div className="hint">Playtron / キーボード 1–9 ・ d: 情報表示</div>
               <div className="notes">{active.length ? active.join(' ') : '—'}</div>
