@@ -31,7 +31,22 @@ export type VisualState = {
 const DCELL = 6
 const GCELL = 15
 const TAU = Math.PI * 2
-const RAMP = [' ', '.', '·', ':', '+', '*', '#', '@']
+// 濃さ帯ごとの文字セット（軽い→重い）。同じ帯の中で文字を散らし、
+// グラデーションの重なりを複雑に・データっぽく見せる（@ が最重）
+const RAMP_SETS: string[][] = [
+  [' '],
+  ['.', '·', ','],
+  [':', ';', '˙'],
+  ['+', '=', 'i', '1', '!'],
+  ['*', 'o', 'e', 'x', '7', '4'],
+  ['#', 'Z', 'R', '0', '8'],
+  ['@', 'M', 'W'],
+]
+// セル座標から安定した擬似乱数（0..1）
+const cellHash = (cx: number, cy: number) => {
+  const s = Math.sin(cx * 127.1 + cy * 311.7) * 43758.5453
+  return s - Math.floor(s)
+}
 
 type Colony = {
   id: number
@@ -486,15 +501,28 @@ export class SignalField {
         const raw = this.densAt(px, py)
         const amb = ambient * (0.5 + 0.5 * Math.sin(cx * 0.8 + cy * 0.6 + this.t * 0.7)) * 0.5
         if (raw + amb <= 0.03) continue
+        const h1 = cellHash(cx, cy) // セル固有の性格（明滅の速さ・位相・文字の癖）
+        const h2 = cellHash(cx + 57, cy + 91)
         const wave = this.waveAt(px, py)
-        const sway = 3 * Math.sin(cy * 0.5 + this.t * 0.5)
-        let d = this.densAt(px + wave.dx * 9 + sway, py + wave.dy * 9)
+        // うねりの向き・速さも場所でゆるやかに変わる（低周波の空間変化）
+        const swayAmp = 2 + 2.5 * (0.5 + 0.5 * Math.sin(cx * 0.11 - cy * 0.07))
+        const swayX = swayAmp * Math.sin(cy * 0.4 + this.t * (0.35 + 0.3 * h2) + h1 * TAU)
+        const swayY = swayAmp * 0.6 * Math.cos(cx * 0.3 - this.t * (0.25 + 0.2 * h1))
+        let d = this.densAt(px + wave.dx * 9 + swayX, py + wave.dy * 9 + swayY)
         d += amb
         if (d <= 0.03) continue
         d *= 1 + 0.35 * wave.w
-        d *= 0.86 + 0.14 * Math.sin(cx * 2.1 + cy * 1.3 + this.t * 2.0)
-        const idx = Math.min(RAMP.length - 1, Math.max(1, Math.round(Math.min(1, d) * (RAMP.length - 1))))
-        const ch = RAMP[idx]
+        // 大きな呼吸のパッチ（領域ごとに膨らみ・沈みのタイミングが違う）
+        d *= 0.92 + 0.08 * Math.sin(cx * 0.12 - this.t * 0.4) * Math.cos(cy * 0.1 + this.t * 0.3)
+        // セルごとに周期・振幅が違う明滅（一様なさざめきを避ける）
+        const blinkFreq = 1.2 + 2.6 * h1
+        const blinkAmp = 0.08 + 0.16 * h2
+        d *= 1 - blinkAmp + blinkAmp * Math.sin(this.t * blinkFreq + h1 * TAU)
+        const band = Math.min(RAMP_SETS.length - 1, Math.max(1, Math.round(Math.min(1, d) * (RAMP_SETS.length - 1))))
+        const set = RAMP_SETS[band]
+        // 同じ帯の中で文字を散らし、セルごとに違う周期でゆっくり入れ替わる
+        const swap = Math.floor(this.t / (0.9 + h2 * 1.6) + h1 * 12)
+        const ch = set[(swap + ((h1 * 31) | 0)) % set.length]
         if (ch === ' ') continue
         const lvl = Math.min(1, d)
         const g = 45 + Math.round(205 * lvl)
