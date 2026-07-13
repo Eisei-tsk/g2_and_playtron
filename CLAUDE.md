@@ -2,8 +2,8 @@
 
 Playtronica Playtron と Even Realities G2 を組み合わせたアンビエントアートシステム「**Conduct**」の開発ガイド。前半（§0）に本プロジェクト固有の構成（Playtron / MIDI ブリッジ / Tone.js / G2 連携）を、後半（§1〜）に Even G2 グラス向け WebApp 開発の汎用ナレッジ（SDK 制約・API・パッケージング）をまとめる。
 
-> **最終更新: 2026-06-14**（本プロジェクト使用: SDK v0.0.10 / CLI v0.1.13 / Simulator v0.7.3 ＝ いずれも npm 最新）
-> **更新履歴**: 2026-06 に SDK v0.0.9→v0.0.10 / CLI v0.1.11→v0.1.13 / Simulator v0.7.2→v0.7.3 へ更新。**SDK の型定義は v0.0.9 と v0.0.10 で完全一致（API 変更なし）**。詳細は「バージョン履歴」を参照。
+> **最終更新: 2026-07-13**（本プロジェクト使用: SDK v0.0.11 / CLI v0.1.13 / Simulator v0.7.3）
+> **保留中の新版**: SDK v0.0.12（2026-07-10 公開）と Simulator v0.8.0（2026-07-08 公開）は `min-release-age=7` の隔離期間内のため保留。**それぞれ 2026-07-17 / 07-15 以降に採用検討**（`zOrderIndex`＝コンテナ重ね順制御、画像 LZ4＝更新低遅延化。どちらも本プロジェクトに有用で、zOrder は SDK/Simulator をペアで上げる）。詳細は「バージョン履歴」を参照。
 > Even Hub が 2026-04-03 に正式ローンチ。Beta/Pilot フェーズ終了。約50アプリがローンチ時に公開済み。
 >
 > **情報の信頼順位**: ① SDK 型定義・実際の API 動作 → ② 公式ドキュメント（ハードウェア制約） → ③ コミュニティ実装実績（実機検証済み値） → ④ SDK README テキスト（型定義と矛盾する場合は型を優先）。情報源間で表記ブレがある場合は本ドキュメント内に併記する。
@@ -40,7 +40,7 @@ Node.js ブリッジサーバー（WebMIDI 受信 + WebSocket 配信）
 
 - **ステップごとにブランチを切って進める。** ブランチの作成・**push**・main へのマージは**開発者（ユーザー）が手動で行う**。Claude は**現在のブランチで実装 → コミットまで**を担当する（**push はしない**・ブランチ作成・main へのマージもしない。デフォルトブランチ `main` 上にいる場合はコミット前に確認する）。リモートは `origin`。
 - **進捗は [PROGRESS.md](PROGRESS.md) で管理する。** 大きな変更やステップの切り替え時には、作業と同時に PROGRESS.md へ記録する。**README.md には進捗を書かない**（README はコンテンツ概要・検証・URL 用）。
-- **SDK アップデート調査済み（2026-06）。** G2 開発着手前の調査を実施し、SDK v0.0.10 / CLI v0.1.13 / Simulator v0.7.3 へ更新済み。**SDK 型定義は v0.0.9 と差分ゼロ（API 変更なし）**、CLI は `qr` 描画の改善のみ、Simulator は `--automation-port`（HTTP 自動化 API）等が利用可能（「バージョン履歴」「9. テスト方法」参照）。今後さらに更新が出た場合は同様に changelog を確認してから上げる。
+- **SDK アップデート調査（直近: 2026-07-13）。** G2 移植着手時に再調査し **SDK v0.0.11 へ更新**（隔離通過済み。App 位置 API・カメラ/アルバム API・マイク音源選択の追加のみで破壊的変更なし）。**SDK v0.0.12（zOrderIndex・画像 LZ4）と Simulator v0.8.0（zOrder 対応）は隔離中＝2026-07-17 / 07-15 以降にペアで採用検討**。CLI は v0.1.13 が最新。今後も更新時は changelog と型定義差分を確認してから上げる（公開7日未満は `min-release-age=7` により保留）。
 
 ### Playtron デバイス & MIDI 仕様
 
@@ -116,9 +116,9 @@ Playtron の MIDI を受け取り WebSocket で全クライアントへ配信す
 | **開発者コンソール（ポータル）** | https://hub.evenrealities.com/hub（旧 https://evenhub.evenrealities.com からリダイレクト） |
 | **開発者申請フォーム** | https://hub.evenrealities.com/application |
 | **デザインガイドライン（Figma）** | [Even Realities - Software Design Guidelines (Public)](https://www.figma.com/design/X82y5uJvqMH95jgOfmV34j/Even-Realities---Software-Design-Guidelines--Public-?node-id=2922-80782&t=r9P3fmZ2C2glMlQ9-1) |
-| SDK npm パッケージ | [`@evenrealities/even_hub_sdk`](https://www.npmjs.com/package/@evenrealities/even_hub_sdk)（現在: 0.0.10） |
-| シミュレーター npm パッケージ | [`@evenrealities/evenhub-simulator`](https://www.npmjs.com/package/@evenrealities/evenhub-simulator)（現在: 0.7.3） |
-| CLI npm パッケージ | [`@evenrealities/evenhub-cli`](https://www.npmjs.com/package/@evenrealities/evenhub-cli)（現在: 0.1.13） |
+| SDK npm パッケージ | [`@evenrealities/even_hub_sdk`](https://www.npmjs.com/package/@evenrealities/even_hub_sdk)（使用: 0.0.11 / npm 最新 0.0.12 は保留中） |
+| シミュレーター npm パッケージ | [`@evenrealities/evenhub-simulator`](https://www.npmjs.com/package/@evenrealities/evenhub-simulator)（使用: 0.7.3 / npm 最新 0.8.0 は保留中） |
+| CLI npm パッケージ | [`@evenrealities/evenhub-cli`](https://www.npmjs.com/package/@evenrealities/evenhub-cli)（使用: 0.1.13 ＝ 最新） |
 | SDK の英語 README | `node_modules/@evenrealities/even_hub_sdk/README.md`（中国語版: `README.zh-CN.md`） |
 | コミュニティ技術ノート | [even-g2-notes](https://github.com/nickustinov/even-g2-notes) — アーキテクチャ詳細、Unicode グリフテーブル、SDK の癖、エラーコード |
 | コミュニティ Discord | https://discord.gg/Y4jHMCU4sv |
@@ -208,9 +208,9 @@ Plugins は HTML/CSS/JavaScript（TypeScript）で構築する Web アプリ。V
 ### インストール
 
 ```bash
-npm install @evenrealities/even_hub_sdk           # SDK（現在: 0.0.10）
-npm install -D @evenrealities/evenhub-cli         # CLI（現在: 0.1.13）
-npm install -g @evenrealities/evenhub-simulator   # シミュレーター（現在: 0.7.3）
+npm install @evenrealities/even_hub_sdk           # SDK（使用: 0.0.11）
+npm install -D @evenrealities/evenhub-cli         # CLI（使用: 0.1.13）
+npm install -g @evenrealities/evenhub-simulator   # シミュレーター（使用: 0.7.3）
 ```
 
 ### バージョン管理
@@ -218,7 +218,7 @@ npm install -g @evenrealities/evenhub-simulator   # シミュレーター（現�
 ```json
 {
   "dependencies": {
-    "@evenrealities/even_hub_sdk": "^0.0.10"
+    "@evenrealities/even_hub_sdk": "^0.0.11"
   },
   "devDependencies": {
     "@evenrealities/evenhub-cli": "^0.1.13"
@@ -235,8 +235,9 @@ npm install -g @evenrealities/evenhub-simulator   # シミュレーター（現�
 | **SDK** | 0.0.7 | 2026-02-11 | — |
 | | 0.0.8 | 2026-03-25 | launch source 検知、IMU 制御、`borderRadius` 修正、コンテナ上限 4→12 に拡張、画像最大 288×144（README 記載値） |
 | | 0.0.9 | 2026-03-25 | `EventSourceType` 互換性改善、デフォルト source enum フォールバック |
-| | **0.0.10** | **2026-04-10** | **本プロジェクト採用中。** WebView バックグラウンド維持（keep-alive）の強化。**型定義は v0.0.9 と完全一致＝ API 変更なし**（実装のみ） |
-| | 0.0.11 | 2026-06-22 | **公開直後のため保留（`min-release-age=7` でブロック）。** 追加のみ・破壊的変更なし: **App 位置 API**（`getAppLocation`/`startAppLocationUpdates`/`onAppLocationChanged`＝GPS archetype 構想に直結）、アルバム画像ピッカー、カメラ撮影 API、マイク音源選択（`glasses`/`phone`、`audioControl(isOpen, source?)` に任意引数追加）。**7日経過後・GPS フェーズ着手時に採用検討** |
+| | 0.0.10 | 2026-04-10 | WebView バックグラウンド維持（keep-alive）の強化。**型定義は v0.0.9 と完全一致＝ API 変更なし**（実装のみ） |
+| | **0.0.11** | **2026-06-22** | **本プロジェクト採用（2026-07-13 に隔離通過を確認して更新）。** 追加のみ・破壊的変更なし: **App 位置 API**（`getAppLocation`/`startAppLocationUpdates`/`onAppLocationChanged`＝GPS archetype 構想に直結）、アルバム画像ピッカー、カメラ撮影 API、マイク音源選択（`glasses`/`phone`、`audioControl(isOpen, source?)` に任意引数追加） |
+| | 0.0.12 | 2026-07-10 | **隔離中（`min-release-age=7`）→ 2026-07-17 以降に採用検討。** 追加のみ: **`zOrderIndex`**（list/text/image コンテナの重ね順制御。全コンテナに指定 or 全て省略、ページ内ユニーク必須。検証ヘルパー `validateEvenHubPageContainerZOrder` 追加）、**画像 raw データ更新の内部 LZ4 圧縮**（転送量減＝画像更新の低遅延化）。※`ImageRawDataUpdateFields` の `compressMode?` フィールドが削除（未使用なら影響なし）。**Simulator 0.8.0 とペアで上げる** |
 | **CLI** | 0.1.9 | 2026-03-21 | app.json サイズ制限調整 |
 | | 0.1.10 | 2026-03-24 | app.json 制約微調整（公式ドキュメント記載バージョン） |
 | | 0.1.11 | 2026-03-25 | Windows のパッキング不具合修正 |
@@ -249,7 +250,8 @@ npm install -g @evenrealities/evenhub-simulator   # シミュレーター（現�
 | | 0.7.0 | 2026-04 | **`--automation-port`（HTTP 自動化 API）追加**。既定 `border_color` を 0（不可視）に変更し実機と一致。未知グリフ処理を実機準拠（`LV_USE_FONT_PLACEHOLDER`+`g2` feature）。canvas を生 PNG でストリーム |
 | | 0.7.1 | 2026-04-09 | スクロールバー抑制、単一コンテナの幅/高さ上限、テキスト 999 バイト上限 |
 | | 0.7.2 | 2026-04-15 | 絵文字レンダリング改善、bounce 安定化、新ツールチェーン互換 |
-| | **0.7.3** | **2026-04-18** | **本プロジェクト採用。** `/api/screenshot/webview` の空画像バグ修正（各 OS のネイティブ capture 経路へ）、リスト項目を最大 63 バイト・20 件に制約 |
+| | **0.7.3** | **2026-04-18** | **本プロジェクト採用中。** `/api/screenshot/webview` の空画像バグ修正（各 OS のネイティブ capture 経路へ）、リスト項目を最大 63 バイト・20 件に制約 |
+| | 0.8.0 | 2026-07-08 | **隔離中（`min-release-age=7` 相当の運用）→ 2026-07-15 以降に採用検討。** `zOrderIndex` 対応（SDK 0.0.12 と同じルール: 全指定 or 全省略・ページ内ユニーク。違反ペイロードは拒否）、画像デコードのピクセル上限（メモリ保護）。**SDK 0.0.12 とペアで上げる** |
 
 > **⚠️ 表記ブレ**: 公式ドキュメント（最終更新 2026-03-27 頃の Nuxt SPA。WebFetch では本文取得不可）は旧バージョン記載のことがある。**一次情報は npm パッケージ同梱の README/CHANGELOG**（型定義と矛盾する場合は型定義を優先）。
 
