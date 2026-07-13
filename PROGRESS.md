@@ -18,11 +18,13 @@
 
 | 項目 | 状態 |
 |---|---|
-| フェーズ | フェーズ2: G2 移植（テスト環境から）|
-| 直近の作業 | S0: バージョン再調査・SDK 0.0.11 へ更新（0.0.12 / Sim 0.8.0 は隔離中→7/17・7/15 以降）|
+| フェーズ | フェーズ2: G2 移植 |
+| 完了 | S0 バージョン更新（SDK 0.0.11）/ S1 G2 接続スケルトン（シミュレーター疎通済み）|
+| **次の一手** | **S2: ビジュアル縮約移植**（`src/glasses/g2.ts` のテストループを本物に差し替え。engine の `getVisualState()` を購読し 576×288 テキストへ「検出ボックス＋コロニー ASCII」を描く。①テキストのみ→②画像コンテナのハイブリッド、の二段構え。**このブランチで続行**）|
 | ブランチ | `feature/g2-port` |
 | Node / TS | 22.22.1（`.node-version`）/ TypeScript ~5.9 |
-| Even 版 | SDK 0.0.11 / CLI 0.1.13 / Simulator 0.7.3（SDK 0.0.12・Sim 0.8.0 は保留中）|
+| Even 版 | SDK 0.0.11 / CLI 0.1.13 / Simulator 0.7.3（**SDK 0.0.12→7/17・Sim 0.8.0→7/15 以降に隔離明けでペア採用検討**。zOrderIndex/画像LZ4）|
+| テスト手順 | `npm run dev` ＋ `evenhub-simulator http://localhost:5173 --automation-port 9897` → `/api/screenshot/glasses` で G2 画面 PNG・`/api/console` でログ確認（CLAUDE.md §9）|
 
 ---
 
