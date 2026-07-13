@@ -90,6 +90,7 @@ let heartPhase = 0
 let openBoost = 0 // セクション到来時にフィルターを一気に開く一時ブースト（Hz）
 let gainLift = 0 // セクション到来時の一時的な音量リフト
 let lastGesture: Gesture | null = null
+let gestureId = 0 // ジェスチャ発火のたびに増える（ビジュアルが新規発火を検知するため）
 let worldNow: WorldState = { tide: 0, brightness: 0.5, shimmer: 0 }
 let controlTimer: ReturnType<typeof setInterval> | null = null
 
@@ -125,6 +126,24 @@ export function getProgress() {
     arcSeconds,
     stage: stage(),
     section: SECTIONS[stage()],
+    breadth: distinctNotes.size,
+  }
+}
+
+/** ビジュアル用の状態スナップショット（音と同じ core 状態を購読して描くため） */
+export function getVisualState() {
+  const now = nowMs()
+  return {
+    held: [...held.values()].map((h) => h.q), // 触れている量子化ノート
+    echoes: echoes.active(now).map((e) => ({ id: e.id, kind: e.kind, notes: e.notes, level: e.level })),
+    gesture: lastGesture ? { kind: lastGesture.kind, notes: lastGesture.notes.map(quantizeToPentatonic), id: gestureId } : null,
+    development,
+    arc: arc01(),
+    arc3: arc3(),
+    stage: stage(),
+    tide: worldNow.tide,
+    brightness: worldNow.brightness,
+    shimmer: worldNow.shimmer,
     breadth: distinctNotes.size,
   }
 }
@@ -389,6 +408,7 @@ const voiceOf = (band: 'low' | 'mid' | 'high') => (band === 'low' ? touchLow : b
 // --- ジェスチャ別の応答（会話の語彙）。残響を積んで反芻 ---
 function onGesture(g: Gesture) {
   lastGesture = g
+  gestureId++
   const t = Tone.now()
   const q = g.notes.map(quantizeToPentatonic)
   switch (g.kind) {

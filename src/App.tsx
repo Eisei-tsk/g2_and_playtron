@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { connectBridge, type NoteMessage } from './ws/bridgeClient'
 import { startAudio, noteOn, noteOff, isStarted, getProgress } from './audio/engine'
+import SignalCanvas from './visual/SignalCanvas'
 
 // キーボード fallback: 1–9 を MIDI ノートにマップ（押下=on / 離す=off）。
 const KEY_NOTES: Record<string, number> = {
@@ -10,17 +11,11 @@ const KEY_NOTES: Record<string, number> = {
   '6': 69, '7': 71, '8': 72, '9': 74,
 }
 
-// development しきい値で点灯する層（engine の TH と対応）
-const LAYERS: { name: string; th: number }[] = [
-  { name: 'bed', th: 0.02 },
-  { name: 'melody', th: 0.25 },
-  { name: 'arp', th: 0.5 },
-  { name: 'sparkle', th: 0.75 },
-]
 
 function App() {
   const [audioReady, setAudioReady] = useState(false)
   const [connected, setConnected] = useState(false)
+  const [showDebug, setShowDebug] = useState(true)
   const [active, setActive] = useState<number[]>([])
   const [prog, setProg] = useState({
     touches: 0,
@@ -65,6 +60,7 @@ function App() {
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.repeat) return
+      if (e.key === 'd') setShowDebug((v) => !v) // デバッグ表示の切替
       const n = KEY_NOTES[e.key]
       if (n !== undefined) handleNote(n, true)
     }
@@ -97,52 +93,39 @@ function App() {
 
   return (
     <main className="conduct-root">
-      <h1>Conduct</h1>
       {!audioReady ? (
-        <button className="start-btn" onClick={start}>
-          ▶ Start
-        </button>
+        <div className="start-screen">
+          <h1>Conduct</h1>
+          <button className="start-btn" onClick={start}>
+            ▶ Start
+          </button>
+        </div>
       ) : (
         <>
-          <p className={connected ? 'status ok' : 'status'}>
-            bridge: {connected ? 'connected' : 'disconnected'}
-          </p>
-          <p className="hint">Playtron に触れる / キーボード 1–9 で発音</p>
-          <p className="notes">{active.length ? active.join('   ') : '—'}</p>
+          <SignalCanvas />
 
-          <p className="state">{state === 'waiting' ? 'waiting' : `${state} · ${prog.chord}`}</p>
-
-          <div className="meter">
-            <div className="meter-fill" style={{ width: `${Math.round(prog.development * 100)}%` }} />
-          </div>
-
-          <div className="layers">
-            <span className={prog.touches === 0 ? 'layer on' : 'layer'}>
-              {prog.touches === 0 ? '●' : '○'} waiting
-            </span>
-            {LAYERS.map((l) => (
-              <span key={l.name} className={prog.development >= l.th ? 'layer on' : 'layer'}>
-                {prog.development >= l.th ? '●' : '○'} {l.name}
-              </span>
-            ))}
-          </div>
-
-          <div className="world">
-            <span>gesture: {prog.gesture}</span>
-            <span>echoes: {prog.echoes}</span>
-            <span>objects: {prog.breadth}/16</span>
-          </div>
-
-          <div className="arc">
-            <span>{prog.section} · stage {prog.stage} · {Math.floor(prog.arcSeconds)}s</span>
-          </div>
-          <div className="meter arcbar" title="発展の蓄積（arc）">
-            <div className="meter-fill" style={{ width: `${Math.round(prog.arc * 100)}%` }} />
-          </div>
-
-          <div className="meter tide" title="世界の潮（息遣い）">
-            <div className="meter-fill" style={{ width: `${Math.round(prog.tide * 100)}%` }} />
-          </div>
+          {showDebug && (
+            <div className="debug">
+              <div className={connected ? 'status ok' : 'status'}>
+                bridge: {connected ? 'connected' : 'disconnected'}
+              </div>
+              <div className="hint">Playtron / キーボード 1–9 ・ d: 情報表示</div>
+              <div className="notes">{active.length ? active.join(' ') : '—'}</div>
+              <div className="state">{state === 'waiting' ? 'waiting' : `${state} · ${prog.chord}`}</div>
+              <div className="arc">{prog.section} · stage {prog.stage} · {Math.floor(prog.arcSeconds)}s</div>
+              <div className="world">
+                <span>gesture: {prog.gesture}</span>
+                <span>echoes: {prog.echoes}</span>
+                <span>obj: {prog.breadth}/16</span>
+              </div>
+              <div className="meter arcbar" title="発展の蓄積（arc）">
+                <div className="meter-fill" style={{ width: `${Math.round(prog.arc * 100)}%` }} />
+              </div>
+              <div className="meter tide" title="世界の潮（息遣い）">
+                <div className="meter-fill" style={{ width: `${Math.round(prog.tide * 100)}%` }} />
+              </div>
+            </div>
+          )}
         </>
       )}
     </main>
