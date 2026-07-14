@@ -113,28 +113,31 @@ function neutralState(t: number): VisualState {
   }
 }
 
-// `?g2demo=1` 用の合成状態。2〜3 ノートのタッチが重なりながら巡回し、
-// arc が数分かけて満ちる（実機の「触れられるのは 2〜4 個」を模す）
+// `?g2demo=1` 用の合成状態。「触っては離す」を合間の余白つきで繰り返し、
+// arc が数分かけて満ちる（実機の「触れられるのは 2〜4 個・触りっぱなしにはならない」を模す）
 function demoState(t: number): VisualState {
   const held: number[] = []
-  const phase = t % 24
-  if (phase < 9) held.push(65)
-  if (phase > 4 && phase < 15) held.push(71)
-  if (phase > 12 && phase < 20) held.push(60)
-  const arc = Math.min(1, t / 120)
-  const gestureId = Math.floor(t / 7)
+  const phase = t % 36
+  if (phase >= 2 && phase < 8) held.push(65)
+  if (phase >= 12 && phase < 17) held.push(71)
+  if (phase >= 22 && phase < 28) {
+    held.push(60)
+    if (phase >= 24) held.push(65) // 重なる瞬間もつくる
+  }
+  const arc = Math.min(1, t / 180)
+  const gestureId = Math.floor(t / 9)
   return {
     held,
     echoes: [],
     gesture: { kind: 'greeting', notes: [held[0] ?? 65], id: gestureId },
     development: Math.min(1, t / 10),
     arc,
-    arc3: Math.min(1, t / 300),
+    arc3: Math.min(1, t / 420),
     stage: arc > 0.75 ? 3 : arc > 0.5 ? 2 : arc > 0.25 ? 1 : 0,
     tide: 0.5 + 0.5 * Math.sin(t * 0.07),
     brightness: 0.5,
     shimmer: 0.3 + 0.3 * Math.sin(t * 0.11),
-    breadth: Math.min(3, Math.ceil(t / 8)),
+    breadth: Math.min(3, Math.ceil(t / 12)),
   }
 }
 

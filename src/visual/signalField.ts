@@ -48,13 +48,22 @@ const cellHash = (cx: number, cy: number) => {
   return s - Math.floor(s)
 }
 
-type Colony = {
+export type Colony = {
   id: number
   x: number; y: number
   R: number; maxR: number
   age: number; life: number
   seed: number; fiberFreq: number
   alive: boolean
+}
+
+// 表示先ごとのチューニング（挙動は同一のまま、規模だけ変える）。
+// ブラウザは既定値。G2（48×13 セル相当の解像度）は少数・大型に絞る
+export type FieldTuning = {
+  /** 同時生存コロニー数の上限（既定 22） */
+  maxColonies?: number
+  /** コロニー最大半径の min(w,h) に対する割合レンジ（既定 [0.1, 0.24]） */
+  colonyRadius?: [number, number]
 }
 // 検出ボックス（bounding box）。コロニーにフィットし、ジッタ・チラつき・即消滅
 export type Det = {
@@ -74,6 +83,11 @@ type Disturb = {
 }
 
 export class SignalField {
+  private tuning: FieldTuning
+  constructor(tuning: FieldTuning = {}) {
+    this.tuning = tuning
+  }
+
   private colonies: Colony[] = []
   private dets: Det[] = []
   private disturbs: Disturb[] = []
@@ -152,6 +166,9 @@ export class SignalField {
   get detections(): readonly Det[] {
     return this.dets
   }
+  get colonyList(): readonly Colony[] {
+    return this.colonies
+  }
   get energy(): number {
     return this.netEnergy
   }
@@ -205,12 +222,13 @@ export class SignalField {
   }
 
   private spawnColony(x: number, y: number, w: number, h: number) {
-    if (this.colonies.filter((c) => c.alive).length >= 22) return
+    if (this.colonies.filter((c) => c.alive).length >= (this.tuning.maxColonies ?? 22)) return
     const base = Math.min(w, h)
+    const [r0, r1] = this.tuning.colonyRadius ?? [0.1, 0.24]
     this.colonies.push({
       id: this.nextColonyId++,
       x, y, R: 6,
-      maxR: base * (0.1 + 0.14 * Math.random()),
+      maxR: base * (r0 + (r1 - r0) * Math.random()),
       age: 0,
       life: 16 + Math.random() * 18,
       seed: Math.random() * 1000,

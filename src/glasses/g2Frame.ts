@@ -1,14 +1,18 @@
 // G2「手紙」ビュー — ブラウザ「景色」(signalField) の縮約移植（フェーズ2 S2 ①テキストのみ）
 //
-// 同じシミュレーション（SignalField）を G2 の仮想空間 576×288 で回し、
-//   密度場   → ASCII ランプ（濃さ帯ごとの文字セット＋セル固有の明滅/入れ替え）
-//   検出     → 枠（四隅＋辺）と `ID:n .87` ラベル。低信頼度はチラつく
-//   外乱波   → 密度サンプルの変位・増幅（ブラウザと同じ waveAt）
-// をテキスト1枚（改行区切りのグリッド）に落とす。
+// シミュレーション（コロニー成長・検出フィット/ジッタ/カスケード・外乱波）は
+// ブラウザと同一の SignalField を 576×288 で回す。挙動と思想はそのまま、
+// 「数」と「見せ方」だけをグラスの解像度（48×13 セル・明るさ一律）に合わせて再発明する:
+//   規模     → コロニー同時 4個・大型（FieldTuning。1個が画面の 1/4〜1/3）
+//   密度場   → ASCII ランプ（cap 正規化＋セル固有の明滅/入れ替え）
+//   縁の光   → 「縁は重い字」への翻訳（リング近傍のセルは字形帯を持ち上げる）
+//   検出     → コーナーブラケット ┌ ┐ └ ┘（HUD 的）。最大の1個だけフル罫線枠。
+//              カスケード検出は誕生アニメ（+ → ブラケット → 場に溶ける）
+//   網       → 表示中の箱の中心同士を · の点線で結ぶ（空いたセルにだけ置く）
+//   ラベル   → `ID:n .87` を1個だけ、数秒ごとに対象を巡回（スキャンしている感）
 //
-// G2 のフォントは非等幅なので行ごとに桁の実位置はズレる。枠の多少の歪みは
-// 「検出 UI のカタカタ感」として許容し、見え方はシミュレーターのスクショで調整する。
-// 16階調の輝度は文字では出せない（字形の重さのみ）→ ②画像コンテナのハイブリッドで補う。
+// G2 のフォントは非等幅なので疑似等幅化（下記 padCell）で桁を揃える。
+// 16階調の輝度は文字では出せない → 必要なら ②画像コンテナのハイブリッドで補う。
 
 import { SignalField, type VisualState } from '../visual/signalField'
 
@@ -25,6 +29,14 @@ const CH = G2_H / ROWS
 // ブラウザは rAF（16ms）で回るがG2は ~180ms/フレーム。dt をそのまま渡すと
 // 拡散などフレーム毎の処理の回数が変わりすぎるため、~45ms に刻んで複数回進める
 const SUBSTEP_MS = 45
+
+// G2 用の規模チューニング（挙動は同一・数と大きさだけ）
+const G2_TUNING = { maxColonies: 4, colonyRadius: [0.18, 0.35] as [number, number] }
+// 表示するカスケード検出の上限と寿命（シミュレーション内には多数いてよい。見せるのは生まれたてだけ）
+const MAX_CASCADE_SHOWN = 6
+const CASCADE_SHOW_AGE = 2.2
+// ラベルの巡回間隔（秒）
+const LABEL_ROTATE_S = 4
 
 // 濃さ帯ごとの文字セット（軽い→重い）。ブラウザ版 RAMP_SETS の縮約。
 // G2 フォント外の文字（˙ 等）は避け、ASCII と · のみ使う
@@ -49,9 +61,15 @@ const cellHash = (cx: number, cy: number) => {
   const s = Math.sin(cx * 127.1 + cy * 311.7) * 43758.5453
   return s - Math.floor(s)
 }
+const clampCX = (v: number) => Math.max(0, Math.min(COLS - 1, Math.round(v)))
+const clampCY = (v: number) => Math.max(0, Math.min(ROWS - 1, Math.round(v)))
+// 点線を置いてよいセル（空か最軽帯。場の絵を壊さない）
+const isFaint = (c: string) => c === ' ' || RAMP_SETS[1].includes(c)
+
+type ShownBox = { x0: number; y0: number; x1: number; y1: number; cx: number; cy: number }
 
 export class G2Frame {
-  private field = new SignalField()
+  private field = new SignalField(G2_TUNING)
 
   /** 1フレーム分のテキスト（改行区切り、右端の空白はトリム）を生成する */
   build(vs: VisualState, dtMs: number): string {
@@ -79,6 +97,7 @@ export class G2Frame {
     // その時点の cap で正規化してから字形帯へ割り当てる（飽和で全面が最重帯に
     // 落ちるのを防ぎ、縁と内側のコントラストを保つ）
     const capNow = 0.8 + 1.2 * vs.arc + 0.6 * vs.arc3
+    const rims = this.field.colonyList.filter((c) => c.alive && c.R > 20)
     for (let cy = 0; cy < ROWS; cy++) {
       for (let cx = 0; cx < COLS; cx++) {
         const px = (cx + 0.5) * CW
@@ -95,7 +114,18 @@ export class G2Frame {
         const blinkAmp = 0.08 + 0.16 * h2
         d *= 1 - blinkAmp + blinkAmp * Math.sin(t * blinkFreq + h1 * TAU)
         const rel = Math.min(1, d / capNow)
-        const band = Math.min(RAMP_SETS.length - 1, Math.max(1, Math.round(rel * (RAMP_SETS.length - 1))))
+        let band = Math.min(RAMP_SETS.length - 1, Math.max(1, Math.round(rel * (RAMP_SETS.length - 1))))
+        // 「明るい縁」の翻訳: 輝度が無いので、リング近傍のセルは字形帯を持ち上げて
+        // 重い字の輪郭として浮かばせる（繊維の欠け＝低密度セルはそのまま欠ける）
+        if (d > 0.08) {
+          for (const c of rims) {
+            const dd = Math.abs(Math.hypot(px - c.x, py - c.y) - c.R)
+            if (dd < CH * 0.45) {
+              band = Math.min(RAMP_SETS.length - 1, band + 2)
+              break
+            }
+          }
+        }
         const set = RAMP_SETS[band]
         const swap = Math.floor(t / (0.9 + h2 * 1.6) + h1 * 12)
         grid[cy][cx] = set[(swap + ((h1 * 31) | 0)) % set.length]
@@ -103,56 +133,106 @@ export class G2Frame {
     }
   }
 
-  // 検出ボックス → 枠＋ラベル（drawDetections の縮約）
+  // 検出 → ブラケット/枠/点線/ラベル（drawDetections + drawMesh の再発明）
   private paintDetections(grid: string[][]) {
     const e = this.field.energy
     if (e < 0.03) return
     const t = this.field.time
-    // ラベルは 48×13 のグリッドでは場所を食いすぎる（ブラウザの 10px 文字と違い
-    // 1ラベルで 6〜8 セル）。信頼度上位の少数だけに付ける
-    const labeled = new Set(
-      [...this.field.detections]
-        .filter((d) => d.conf > 0.5 && d.colonyId !== null)
-        .sort((a, b) => b.conf - a.conf)
-        .slice(0, 3)
-        .map((d) => d.id),
-    )
-    for (const d of this.field.detections) {
-      // 低信頼度のチラつき（ブラウザと同じ条件で「消える瞬間」を作る）
+    const dets = this.field.detections
+
+    // --- 選抜: コロニー箱は全部（≤4）、カスケード箱は生まれたての少数だけ ---
+    const colonyBoxes = dets
+      .filter((d) => d.colonyId !== null)
+      .sort((a, b) => b.w * b.h - a.w * a.h)
+    const cascades = dets
+      .filter((d) => d.colonyId === null && d.age < CASCADE_SHOW_AGE)
+      .sort((a, b) => a.age - b.age)
+      .slice(0, MAX_CASCADE_SHOWN)
+
+    const toCells = (d: { x: number; y: number; w: number; h: number }): ShownBox => ({
+      x0: clampCX((d.x - d.w / 2) / CW),
+      x1: clampCX((d.x + d.w / 2) / CW),
+      y0: clampCY((d.y - d.h / 2) / CH),
+      y1: clampCY((d.y + d.h / 2) / CH),
+      cx: clampCX(d.x / CW),
+      cy: clampCY(d.y / CH),
+    })
+
+    // --- 点線メッシュ（箱より下・場より上）: コロニー箱同士を最寄り2本で結ぶ ---
+    const anchors = colonyBoxes.map(toCells)
+    const edges = new Set<string>()
+    for (let i = 0; i < anchors.length; i++) {
+      const near = anchors
+        .map((b, k) => ({ k, d: k === i ? Infinity : Math.hypot(b.cx - anchors[i].cx, b.cy - anchors[i].cy) }))
+        .sort((p, q) => p.d - q.d)
+        .slice(0, 2)
+      for (const n of near) {
+        if (!isFinite(n.d)) continue
+        edges.add(i < n.k ? `${i}-${n.k}` : `${n.k}-${i}`)
+      }
+    }
+    for (const key of edges) {
+      const [i, k] = key.split('-').map(Number)
+      this.dotLine(grid, anchors[i], anchors[k])
+    }
+
+    // --- コロニー箱: ブラケット主体、最大の1個だけフル罫線枠 ---
+    colonyBoxes.forEach((d, idx) => {
+      if (d.conf < 0.45 && Math.sin(t * 22 + d.phase) < -0.1) return // 低信頼度のチラつき
+      const b = toCells(d)
+      if (b.x1 - b.x0 < 1 || b.y1 - b.y0 < 1) return
+      if (idx === 0) {
+        for (let x = b.x0 + 1; x < b.x1; x++) {
+          grid[b.y0][x] = '─'
+          grid[b.y1][x] = '─'
+        }
+        for (let y = b.y0 + 1; y < b.y1; y++) {
+          grid[y][b.x0] = '│'
+          grid[y][b.x1] = '│'
+        }
+      }
+      grid[b.y0][b.x0] = '┌'
+      grid[b.y0][b.x1] = '┐'
+      grid[b.y1][b.x0] = '└'
+      grid[b.y1][b.x1] = '┘'
+    })
+
+    // --- カスケード箱: 誕生アニメ（+ 1文字 → ブラケット → 表示から溶けて消える）---
+    for (const d of cascades) {
       if (d.conf < 0.45 && Math.sin(t * 22 + d.phase) < -0.1) continue
-      const x0 = Math.max(0, Math.min(COLS - 1, Math.round((d.x - d.w / 2) / CW)))
-      const x1 = Math.max(0, Math.min(COLS - 1, Math.round((d.x + d.w / 2) / CW)))
-      const y0 = Math.max(0, Math.min(ROWS - 1, Math.round((d.y - d.h / 2) / CH)))
-      const y1 = Math.max(0, Math.min(ROWS - 1, Math.round((d.y + d.h / 2) / CH)))
-      if (x1 - x0 < 1 || y1 - y0 < 1) {
-        // セル未満の小さな検出は単独マーカー
-        grid[y0][x0] = '+'
+      const b = toCells(d)
+      if (d.age < 0.35 || b.x1 - b.x0 < 1 || b.y1 - b.y0 < 1) {
+        grid[b.cy][b.cx] = '+'
         continue
       }
-      if (d.colonyId !== null) {
-        // コロニー検出（主役の大箱）だけフル枠。辺で密度場を食いすぎないよう他は四隅のみ
-        for (let x = x0 + 1; x < x1; x++) {
-          grid[y0][x] = '-'
-          grid[y1][x] = '-'
-        }
-        for (let y = y0 + 1; y < y1; y++) {
-          grid[y][x0] = '|'
-          grid[y][x1] = '|'
-        }
+      grid[b.y0][b.x0] = '┌'
+      grid[b.y0][b.x1] = '┐'
+      grid[b.y1][b.x0] = '└'
+      grid[b.y1][b.x1] = '┘'
+      // 発見元と点線で繋ぐ（発見カスケードの連鎖が見えるように）
+      const p = dets.find((o) => o.id === d.parentId)
+      if (p) this.dotLine(grid, b, toCells(p))
+    }
+
+    // --- ラベル: 1個だけ、数秒ごとに対象を巡回（装置がスキャンしている感）---
+    const candidates = colonyBoxes.filter((d) => d.conf > 0.5)
+    if (candidates.length) {
+      const d = candidates[Math.floor(t / LABEL_ROTATE_S) % candidates.length]
+      const b = toCells(d)
+      const label = `ID:${d.id} .${Math.round(d.conf * 100).toString().padStart(2, '0')}`
+      for (let k = 0; k < label.length && b.x0 + 1 + k < COLS; k++) {
+        grid[b.y0][b.x0 + 1 + k] = label[k]
       }
-      grid[y0][x0] = '+'
-      grid[y0][x1] = '+'
-      grid[y1][x0] = '+'
-      grid[y1][x1] = '+'
-      // ラベルは信頼度が上がった大きめの箱（コロニー検出）だけに
-      if (labeled.has(d.id)) {
-        const label = `ID:${d.id} .${Math.round(d.conf * 100)
-          .toString()
-          .padStart(2, '0')}`
-        for (let k = 0; k < label.length && x0 + 1 + k < x1; k++) {
-          grid[y0][x0 + 1 + k] = label[k]
-        }
-      }
+    }
+  }
+
+  // セル単位の点線（空いたセルにだけ · を置く。箱や場の字は上書きしない）
+  private dotLine(grid: string[][], a: ShownBox, b: ShownBox) {
+    const steps = Math.max(Math.abs(b.cx - a.cx), Math.abs(b.cy - a.cy))
+    for (let k = 1; k < steps; k++) {
+      const cx = Math.round(a.cx + ((b.cx - a.cx) * k) / steps)
+      const cy = Math.round(a.cy + ((b.cy - a.cy) * k) / steps)
+      if (isFaint(grid[cy][cx])) grid[cy][cx] = '·'
     }
   }
 }
