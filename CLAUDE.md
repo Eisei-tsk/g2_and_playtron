@@ -372,7 +372,9 @@ import {
 | `textContainerUpgrade` | 2,000文字。**ただし1回の呼び出しの `content` は 999 バイト（UTF-8）まで** ※ |
 | `rebuildPageContainer` | 1,000文字 |
 
-> ※ **実測（2026-07-14, Simulator 0.7.3）**: `textContainerUpgrade` の `content` が 999 バイトを超えると `TextContainerUpgrade failed: text content length N exceeds limit of 999 bytes` で**黙って拒否される**（アプリ側に例外は来ない。シミュレーターの stderr にのみ WARN が出る）。Simulator 0.7.1 changelog の「テキスト 999 バイト上限」はこれ。999 バイト超のコンテンツは**行境界で分割し `contentOffset` を使って複数回に分けて送る**。このとき **`contentLength` には「そのチャンクの長さ」ではなく「更新後のコンテンツ全体の文字数」を渡す**（チャンク長を渡すと2回目の送信でコンテンツ全体がその長さに切り詰められる）。実装例は `src/glasses/g2.ts` の `splitChunks`。実機で同じ制限か（またはバイト数が異なるか）は実機テストで要確認。
+> ※ **実測（2026-07-14, Simulator 0.7.3）**: `textContainerUpgrade` の `content` が 999 バイト（UTF-8）を超えると `TextContainerUpgrade failed: text content length N exceeds limit of 999 bytes` で**黙って拒否される**（アプリ側に例外は来ない。シミュレーターの stderr にのみ WARN が出る）。Simulator 0.7.1 changelog の「テキスト 999 バイト上限」はこれ。さらに **`contentOffset` による分割・部分更新はシミュレーターでは機能しない**（offset を無視して**毎回 content で全置換**される。分割送信すると最後のチャンクだけが画面に残る）。**結論: 動的に更新するコンテンツは常に 999 バイト以内に収めて1回で全置換する**。実装例は `src/glasses/g2Frame.ts`（バイト予算超過時は軽い文字を間引く）。実機で offset が機能するか・制限値が同じかは実機テストで要確認。
+>
+> **LVGL テキスト描画の実測メトリクス（同日）**: 行送り **26px** → 全画面コンテナ（288px, padding 8）に収まるのは **10行**。使用可能幅は ~560px（576 − padding 8×2）で、**行末の埋めスペースは折り返しを誘発して行が増える**（行末は必ずトリム。コンテンツが11行を超えるとビューがスクロールし画面がずれる）。文字幅は非等幅（スペース 5px・`.,;i` ~5px・`:|!` ~4px・`+=o-` 10px・`x` 11px・`780ZD5` 12px・`#` 14px・`MW` 16px・`@` 17px・**罫線 `─│┌┐└┘` は 20px**）。桁を揃えるには実測幅テーブル＋誤差拡散レイアウトを使う（`g2Frame.ts` の `layoutRow`。測定は `?g2cal=0..2` ＋ シミュレーターのスクショで再現可能）。
 
 ### 画像コンテナのサイズ制約
 
@@ -1090,7 +1092,8 @@ evenhub --completion-fish   # Fish
 | 現象 | 原因 | 対処 |
 |---|---|---|
 | グラスに何も表示されない | `createStartUpPageContainer` が2回呼ばれている | `useRef` で初期化済みフラグを管理する |
-| グラスが初期表示のまま更新されない（エラーも出ない） | `textContainerUpgrade` の content が **999 バイト**を超え黙って拒否されている | 行境界で分割し `contentOffset` で分割送信（`contentLength` は全体長）。シミュレーターの stderr の WARN を確認 |
+| グラスが初期表示のまま更新されない（エラーも出ない） | `textContainerUpgrade` の content が **999 バイト**を超え黙って拒否されている | コンテンツを 999 バイト以内に収めて1回で全置換（`contentOffset` 分割はシミュレーター非対応）。シミュレーターの stderr の WARN を確認 |
+| 画面に一部の行しか表示されない / 下端の内容が最上段に出る | `contentOffset` 分割送信（シミュレーターは offset 無視で全置換＝最後のチャンクだけ残る）、または行末の埋めスペース/11行超で折り返し・スクロールが発生 | 1回で全置換・行末トリム・10行以内に収める |
 | イベントが来ない | `isEventCapture: 0` になっている | イベントを受けたいコンテナに `isEventCapture: 1` をセット |
 | `containerName` が効かない | 16文字を超えている | 16文字以内に収める |
 | 画像が表示されない | `createStartUpPageContainer` 内で imageData を渡している | 作成後に `updateImageRawData` を別途呼ぶ |

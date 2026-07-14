@@ -6,26 +6,73 @@
 //   規模     → コロニー同時 4個・大型（FieldTuning。1個が画面の 1/4〜1/3）
 //   密度場   → ASCII ランプ（cap 正規化＋セル固有の明滅/入れ替え）
 //   縁の光   → 「縁は重い字」への翻訳（リング近傍のセルは字形帯を持ち上げる）
-//   検出     → コーナーブラケット ┌ ┐ └ ┘（HUD 的）。最大の1個だけフル罫線枠。
-//              カスケード検出は誕生アニメ（+ → ブラケット → 場に溶ける）
-//   網       → 表示中の箱の中心同士を · の点線で結ぶ（空いたセルにだけ置く）
+//   検出     → コーナーマーカー + と枠線 -|（最大の1個だけフル枠）。
+//              カスケード検出は誕生アニメ（+ 1点 → 四隅 → 場に溶ける）
+//   網       → 表示中の箱の中心同士を . の点線で結ぶ（空いたセルにだけ置く）
 //   ラベル   → `ID:n .87` を1個だけ、数秒ごとに対象を巡回（スキャンしている感）
 //
-// G2 のフォントは非等幅なので疑似等幅化（下記 padCell）で桁を揃える。
+// フォントは非等幅のため、実測の文字幅テーブル＋誤差拡散レイアウト（layoutRow）で
+// 桁を揃える。フレームは**全て ASCII**（多バイト文字が混ざるとチャンク送信の
+// contentOffset がずれてフレームが崩壊する。罫線 ┌─│ は実幅 20px と巨大でもある）。
 // 16階調の輝度は文字では出せない → 必要なら ②画像コンテナのハイブリッドで補う。
 
 import { SignalField, type VisualState } from '../visual/signalField'
 
 export const G2_W = 576
 export const G2_H = 288
-// グリッドの列数・行数。フォントが非等幅のためスクショを見て調整する前提のラフ値
-// （シミュレーター実測: 平均字幅 ~9.5px・行高 ~22px、重い字は ~11px。
-//  密度の高い行が 576px を超えて折り返すとグリッドが崩れるので、重い字が
-//  並んでも収まる幅に抑える。52 桁では飽和時に折り返しが出た）
-export const COLS = 48
-export const ROWS = 13
-const CW = G2_W / COLS
-const CH = G2_H / ROWS
+// グリッド。フォントのメトリクスはシミュレーター実測（2026-07-14, Sim 0.7.3）:
+//   行送り 26px（288px に収まるのは 10 行。左右上パディング 8px）
+//   文字幅はグリフごとにバラバラ（下の GLYPH_W）。セルピッチは 12px とし、
+//   12px を超えるグリフ（@ M W # と罫線 20px）は場のランプから外す
+export const COLS = 44 // 44×12=528px ≤ 使用可能幅 ~560px（576 - padding 8×2）。46 では端の行が折り返した
+export const ROWS = 10
+const PITCH = 12 // セルピッチ（px）
+const LINE_H = 26 // 行送り（px, 実測）
+const PAD = 8 // コンテナの paddingLength
+const CW = PITCH
+const CH = LINE_H
+
+// グリフの実幅（px, シミュレーター実測。実機では要再測定）。未登録は 10 とみなす
+const GLYPH_W: Record<string, number> = {
+  ' ': 5,
+  '.': 5, ',': 5, ';': 5, '·': 5, 'i': 5, 'I': 5,
+  ':': 4, '|': 4, '!': 4,
+  '1': 7, '*': 8, '_': 9,
+  '-': 10,
+  'o': 10, '+': 10, '=': 10,
+  'x': 11,
+  '7': 12, 'Z': 12, '0': 12, '8': 12, 'D': 12, '5': 12,
+  '#': 14, 'M': 16, 'W': 16, '@': 17,
+  '─': 20, '│': 20, '┌': 20, '┐': 20, '└': 20, '┘': 20,
+}
+const SPACE_W = 5
+const glyphW = (c: string) => GLYPH_W[c] ?? 10
+// textContainerUpgrade 1回の content 上限 999 バイトに対するフレーム予算（余裕込み）
+const FRAME_BYTE_BUDGET = 990
+
+/**
+ * 誤差拡散レイアウト: セル配列を「実幅を追跡しながら」文字列へ。
+ * 各セルの目標 x（cx×PITCH）に対し、実位置が遅れていればスペースで追いつき、
+ * 前の幅広グリフがこのセルを覆っていれば置かない。累積ズレを ±3px 程度に抑える。
+ * 行末はトリム（トレーリングスペースは LVGL の折り返しを誘発するため厳禁）
+ */
+export function layoutRow(row: string[]): string {
+  let s = ''
+  let x = 0
+  for (let cx = 0; cx < row.length; cx++) {
+    const target = cx * PITCH
+    if (x - target >= PITCH / 2) continue // 前のグリフがこのセルまで届いている
+    const g = row[cx]
+    if (g === ' ') continue
+    while (target - x > SPACE_W / 2) {
+      s += ' '
+      x += SPACE_W
+    }
+    s += g
+    x += glyphW(g)
+  }
+  return s.replace(/ +$/, '')
+}
 // ブラウザは rAF（16ms）で回るがG2は ~180ms/フレーム。dt をそのまま渡すと
 // 拡散などフレーム毎の処理の回数が変わりすぎるため、~45ms に刻んで複数回進める
 const SUBSTEP_MS = 45
@@ -42,19 +89,13 @@ const LABEL_ROTATE_S = 4
 // G2 フォント外の文字（˙ 等）は避け、ASCII と · のみ使う
 const RAMP_SETS: string[][] = [
   [' '],
-  ['.', ','], // ASCII のみ（· は UTF-8 2バイトで 999 バイト制限を圧迫するため場では使わない）
-  [':', ';', '|'],
+  ['.', ','],
+  [':', ';'],
   ['+', '=', 'i', '!'],
-  ['*', 'o', 'x', '7'],
-  ['#', 'Z', '0', '8'],
-  ['@', 'M', '0'], // W はフォント幅が広く行の折り返しを招くので外す
+  ['*', 'o', 'x'],
+  ['Z', '7', 'x'],
+  ['8', '0'], // 12px 超のグリフ（@ M W #）は桁ズレの主犯なので使わない
 ]
-// 疑似等幅化: G2 フォントは非等幅で、空白・軽い文字は ~5px しかない
-// （疎な行が画面の左半分に潰れ、場が内容で空間的に歪む）。空白セルはスペース2個、
-// 幅の狭い文字はスペース1個を足して、どのセルも ~10〜11px に揃える。
-// 文字数は最大 ~96×13 ≈ 1250 字で textContainerUpgrade の 2000 字以内に収まる
-const NARROW = new Set(['.', '·', ',', ':', ';', '|', '!', 'i', '1'])
-const padCell = (c: string) => (c === ' ' ? '  ' : NARROW.has(c) ? c + ' ' : c)
 
 const TAU = Math.PI * 2
 const cellHash = (cx: number, cy: number) => {
@@ -84,14 +125,32 @@ export class G2Frame {
     this.paintNature(grid, vs)
     this.paintDetections(grid)
 
-    // 各行を固定長（2×COLS 文字）に揃える。フレーム全体が毎回同じ文字数になるので、
-    // 分割送信（contentOffset）のオフセットが安定し、前フレームの残骸も必ず上書きされる
-    return grid
-      .map((row) => {
-        const s = row.map(padCell).join('')
-        return s + ' '.repeat(Math.max(0, COLS * 2 - s.length))
-      })
-      .join('\n')
+    // フレームは常に10行ちょうど・行末トリム・全体を1回の textContainerUpgrade で全置換。
+    // 999 バイト制限（超過は黙って拒否）があるため、超えそうなら最軽帯のセルを
+    // 間引いて予算内に収める（軽い字ほどスペース追い付きで文字数を食う）。
+    // フレームは全 ASCII なので バイト数 = 文字数
+    let body = grid.map(layoutRow).join('\n')
+    if (body.length > FRAME_BYTE_BUDGET) {
+      // 1回目: 最軽帯（. ,）を市松に間引く
+      this.thinLightCells(grid, 2)
+      body = grid.map(layoutRow).join('\n')
+    }
+    if (body.length > FRAME_BYTE_BUDGET) {
+      // 2回目: 最軽帯を全て落とす
+      this.thinLightCells(grid, 1)
+      body = grid.map(layoutRow).join('\n')
+    }
+    return body
+  }
+
+  // 最軽帯（band1: . ,）のセルを n セルに1個残しで消す
+  private thinLightCells(grid: string[][], keepEvery: number) {
+    for (let cy = 0; cy < ROWS; cy++) {
+      for (let cx = 0; cx < COLS; cx++) {
+        if (!RAMP_SETS[1].includes(grid[cy][cx])) continue
+        if (keepEvery <= 1 || (cx + cy) % keepEvery !== 0) grid[cy][cx] = ' '
+      }
+    }
   }
 
   // 密度場 → ASCII（drawNature の縮約。うねり変位・セル固有の明滅・文字入れ替えを維持）
@@ -105,8 +164,8 @@ export class G2Frame {
     const rims = this.field.colonyList.filter((c) => c.alive && c.R > 20)
     for (let cy = 0; cy < ROWS; cy++) {
       for (let cx = 0; cx < COLS; cx++) {
-        const px = (cx + 0.5) * CW
-        const py = (cy + 0.5) * CH
+        const px = PAD + (cx + 0.5) * CW
+        const py = PAD + (cy + 0.5) * CH
         const h1 = cellHash(cx, cy)
         const h2 = cellHash(cx + 57, cy + 91)
         const amb = ambient * (0.5 + 0.5 * Math.sin(cx * 0.8 + cy * 0.6 + t * 0.7)) * 0.5
@@ -154,13 +213,15 @@ export class G2Frame {
       .sort((a, b) => a.age - b.age)
       .slice(0, MAX_CASCADE_SHOWN)
 
+    const cxOf = (x: number) => clampCX((x - PAD) / CW - 0.5)
+    const cyOf = (y: number) => clampCY((y - PAD) / CH - 0.5)
     const toCells = (d: { x: number; y: number; w: number; h: number }): ShownBox => ({
-      x0: clampCX((d.x - d.w / 2) / CW),
-      x1: clampCX((d.x + d.w / 2) / CW),
-      y0: clampCY((d.y - d.h / 2) / CH),
-      y1: clampCY((d.y + d.h / 2) / CH),
-      cx: clampCX(d.x / CW),
-      cy: clampCY(d.y / CH),
+      x0: cxOf(d.x - d.w / 2),
+      x1: cxOf(d.x + d.w / 2),
+      y0: cyOf(d.y - d.h / 2),
+      y1: cyOf(d.y + d.h / 2),
+      cx: cxOf(d.x),
+      cy: cyOf(d.y),
     })
 
     // --- 点線メッシュ（箱より下・場より上）: コロニー箱同士を最寄り2本で結ぶ ---
@@ -187,19 +248,21 @@ export class G2Frame {
       const b = toCells(d)
       if (b.x1 - b.x0 < 1 || b.y1 - b.y0 < 1) return
       if (idx === 0) {
+        // フレームは全て ASCII（罫線 ┌─│ は実幅 20px と巨大な上、多バイト文字が
+        // 混ざるとチャンク送信の offset がずれてフレームが崩壊する）
         for (let x = b.x0 + 1; x < b.x1; x++) {
-          grid[b.y0][x] = '─'
-          grid[b.y1][x] = '─'
+          grid[b.y0][x] = '-'
+          grid[b.y1][x] = '-'
         }
         for (let y = b.y0 + 1; y < b.y1; y++) {
-          grid[y][b.x0] = '│'
-          grid[y][b.x1] = '│'
+          grid[y][b.x0] = '|'
+          grid[y][b.x1] = '|'
         }
       }
-      grid[b.y0][b.x0] = '┌'
-      grid[b.y0][b.x1] = '┐'
-      grid[b.y1][b.x0] = '└'
-      grid[b.y1][b.x1] = '┘'
+      grid[b.y0][b.x0] = '+'
+      grid[b.y0][b.x1] = '+'
+      grid[b.y1][b.x0] = '+'
+      grid[b.y1][b.x1] = '+'
     })
 
     // --- カスケード箱: 誕生アニメ（+ 1文字 → ブラケット → 表示から溶けて消える）---
@@ -210,10 +273,10 @@ export class G2Frame {
         grid[b.cy][b.cx] = '+'
         continue
       }
-      grid[b.y0][b.x0] = '┌'
-      grid[b.y0][b.x1] = '┐'
-      grid[b.y1][b.x0] = '└'
-      grid[b.y1][b.x1] = '┘'
+      grid[b.y0][b.x0] = '+'
+      grid[b.y0][b.x1] = '+'
+      grid[b.y1][b.x0] = '+'
+      grid[b.y1][b.x1] = '+'
       // 発見元と点線で繋ぐ（発見カスケードの連鎖が見えるように）
       const p = dets.find((o) => o.id === d.parentId)
       if (p) this.dotLine(grid, b, toCells(p))
@@ -237,7 +300,7 @@ export class G2Frame {
     for (let k = 1; k < steps; k++) {
       const cx = Math.round(a.cx + ((b.cx - a.cx) * k) / steps)
       const cy = Math.round(a.cy + ((b.cy - a.cy) * k) / steps)
-      if (isFaint(grid[cy][cx])) grid[cy][cx] = '·'
+      if (isFaint(grid[cy][cx])) grid[cy][cx] = '.'
     }
   }
 }

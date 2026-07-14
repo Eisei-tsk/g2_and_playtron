@@ -21,37 +21,11 @@ import {
 import { isStarted, getVisualState } from '../audio/engine'
 import type { VisualState } from '../visual/signalField'
 import { G2Frame } from './g2Frame'
+import { buildCalibFrame } from './g2Calib'
 
 export type G2Status = 'idle' | 'connecting' | 'connected' | 'unavailable' | 'error'
 
 const FRAME_MS = 180 // 更新間隔（100〜200ms が目安。上限は実機検証）
-// textContainerUpgrade の content は 1回 999 バイトまで（Simulator 0.7.1+ が超過を拒否。
-// SDK README の「2000文字」とは別のバイト制限）。フレームはこれを超えるので
-// 行境界で分割し contentOffset を使って複数回に分けて送る
-const CHUNK_BYTES = 900
-const enc = new TextEncoder()
-
-type Chunk = { offset: number; text: string }
-
-function splitChunks(content: string): Chunk[] {
-  const chunks: Chunk[] = []
-  const rows = content.split('\n')
-  let cur = ''
-  let curStart = 0
-  let pos = 0
-  for (let i = 0; i < rows.length; i++) {
-    const piece = rows[i] + (i < rows.length - 1 ? '\n' : '')
-    if (cur && enc.encode(cur + piece).length > CHUNK_BYTES) {
-      chunks.push({ offset: curStart, text: cur })
-      cur = ''
-      curStart = pos
-    }
-    cur += piece
-    pos += piece.length
-  }
-  if (cur) chunks.push({ offset: curStart, text: cur })
-  return chunks
-}
 
 let bridge: EvenAppBridge | null = null
 let status: G2Status = 'idle'
@@ -122,6 +96,12 @@ export function stopG2(): void {
 
 const isDemo =
   typeof location !== 'undefined' && new URLSearchParams(location.search).has('g2demo')
+// フォント幅キャリブレーション（開発ツール。?g2cal=0/1/2 でページ指定）
+const calPage: number | null = (() => {
+  if (typeof location === 'undefined') return null
+  const v = new URLSearchParams(location.search).get('g2cal')
+  return v === null ? null : Number(v) || 0
+})()
 
 // 音を鳴らす前の待機状態（ゼロ状態でも薄く文字が漂う）
 function neutralState(t: number): VisualState {
@@ -186,21 +166,20 @@ function startRenderLoop(): void {
         : isStarted()
           ? (getVisualState() as VisualState)
           : neutralState(elapsed)
-      // 999 バイト制限を超えないよう分割して順送（並列送信はしない）。
-      // contentLength は「そのチャンクの長さ」ではなく「更新後のコンテンツ全体の長さ」
-      // として扱われる（チャンク長を渡すと2番目の送信で全体がその長さに切り詰められた）
-      const content = frame.build(vs, dt)
-      for (const c of splitChunks(content)) {
-        await bridge.textContainerUpgrade(
-          new TextContainerUpgrade({
-            containerID: 1,
-            containerName: 'main',
-            contentOffset: c.offset,
-            contentLength: content.length,
-            content: c.text,
-          }),
-        )
-      }
+      // フレームは必ず1回の呼び出しで全置換する。
+      // 999 バイト超は黙って拒否される制限があり、また contentOffset による分割送信は
+      // シミュレーターでは機能しない（offset を無視して全置換される）ため、
+      // フレーム側（g2Frame.build）が 999 バイト以内を保証する
+      const content = calPage !== null ? buildCalibFrame(calPage) : frame.build(vs, dt)
+      await bridge.textContainerUpgrade(
+        new TextContainerUpgrade({
+          containerID: 1,
+          containerName: 'main',
+          contentOffset: 0,
+          contentLength: content.length,
+          content,
+        }),
+      )
     } catch {
       /* 送信失敗は次フレームで再試行 */
     } finally {
