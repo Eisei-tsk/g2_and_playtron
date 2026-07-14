@@ -57,7 +57,7 @@ type Colony = {
   alive: boolean
 }
 // 検出ボックス（bounding box）。コロニーにフィットし、ジッタ・チラつき・即消滅
-type Det = {
+export type Det = {
   id: number
   colonyId: number | null // null = 発見カスケードによる検出
   parentId: number | null // 発見元（メッシュの繋がり）
@@ -92,6 +92,19 @@ export class SignalField {
   private nextDetId = 10
 
   render(ctx: CanvasRenderingContext2D, w: number, h: number, vs: VisualState, dtMs: number) {
+    this.update(w, h, vs, dtMs)
+
+    ctx.fillStyle = '#000'
+    ctx.fillRect(0, 0, w, h)
+
+    this.drawGrid(ctx, w, h, vs)
+    this.drawNature(ctx, w, h, vs)
+    this.drawMesh(ctx)
+    this.drawDetections(ctx)
+  }
+
+  /** シミュレーションだけを1ステップ進める（canvas 以外のレンダラ＝G2 テキスト縮約からも使う） */
+  update(w: number, h: number, vs: VisualState, dtMs: number) {
     const dt = Math.min(dtMs, 50) / 1000
     this.t += dt
     this.ensureGrid(w, h)
@@ -130,14 +143,20 @@ export class SignalField {
     this.feedColonies(dt)
     this.updateDensity(dt, vs)
     this.updateDetections(dt, vs)
+  }
 
-    ctx.fillStyle = '#000'
-    ctx.fillRect(0, 0, w, h)
-
-    this.drawGrid(ctx, w, h, vs)
-    this.drawNature(ctx, w, h, vs)
-    this.drawMesh(ctx)
-    this.drawDetections(ctx)
+  // --- 外部レンダラ（G2 テキスト縮約）向けの読み取り口 ---
+  densityAt(x: number, y: number): number {
+    return this.densAt(x, y)
+  }
+  get detections(): readonly Det[] {
+    return this.dets
+  }
+  get energy(): number {
+    return this.netEnergy
+  }
+  get time(): number {
+    return this.t
   }
 
   // --- 配置（best-candidate 散布。偏り対策）---
@@ -453,7 +472,7 @@ export class SignalField {
     if (this.disturbs.length > 6) this.disturbs.shift()
   }
 
-  private waveAt(x: number, y: number): { dx: number; dy: number; w: number } {
+  waveAt(x: number, y: number): { dx: number; dy: number; w: number } {
     let dx = 0
     let dy = 0
     let wv = 0
