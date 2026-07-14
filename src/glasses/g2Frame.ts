@@ -42,7 +42,7 @@ const LABEL_ROTATE_S = 4
 // G2 フォント外の文字（˙ 等）は避け、ASCII と · のみ使う
 const RAMP_SETS: string[][] = [
   [' '],
-  ['.', '·', ','],
+  ['.', ','], // ASCII のみ（· は UTF-8 2バイトで 999 バイト制限を圧迫するため場では使わない）
   [':', ';', '|'],
   ['+', '=', 'i', '!'],
   ['*', 'o', 'x', '7'],
@@ -84,8 +84,13 @@ export class G2Frame {
     this.paintNature(grid, vs)
     this.paintDetections(grid)
 
+    // 各行を固定長（2×COLS 文字）に揃える。フレーム全体が毎回同じ文字数になるので、
+    // 分割送信（contentOffset）のオフセットが安定し、前フレームの残骸も必ず上書きされる
     return grid
-      .map((row) => row.map(padCell).join('').replace(/ +$/, ''))
+      .map((row) => {
+        const s = row.map(padCell).join('')
+        return s + ' '.repeat(Math.max(0, COLS * 2 - s.length))
+      })
       .join('\n')
   }
 

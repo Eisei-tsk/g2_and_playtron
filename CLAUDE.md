@@ -369,8 +369,10 @@ import {
 | 操作 | 最大文字数 |
 |---|---|
 | `createStartUpPageContainer` | 1,000文字（起動時は転送効率のためなるべく短く） |
-| `textContainerUpgrade` | 2,000文字 |
+| `textContainerUpgrade` | 2,000文字。**ただし1回の呼び出しの `content` は 999 バイト（UTF-8）まで** ※ |
 | `rebuildPageContainer` | 1,000文字 |
+
+> ※ **実測（2026-07-14, Simulator 0.7.3）**: `textContainerUpgrade` の `content` が 999 バイトを超えると `TextContainerUpgrade failed: text content length N exceeds limit of 999 bytes` で**黙って拒否される**（アプリ側に例外は来ない。シミュレーターの stderr にのみ WARN が出る）。Simulator 0.7.1 changelog の「テキスト 999 バイト上限」はこれ。999 バイト超のコンテンツは**行境界で分割し `contentOffset` を使って複数回に分けて送る**。このとき **`contentLength` には「そのチャンクの長さ」ではなく「更新後のコンテンツ全体の文字数」を渡す**（チャンク長を渡すと2回目の送信でコンテンツ全体がその長さに切り詰められる）。実装例は `src/glasses/g2.ts` の `splitChunks`。実機で同じ制限か（またはバイト数が異なるか）は実機テストで要確認。
 
 ### 画像コンテナのサイズ制約
 
@@ -1088,6 +1090,7 @@ evenhub --completion-fish   # Fish
 | 現象 | 原因 | 対処 |
 |---|---|---|
 | グラスに何も表示されない | `createStartUpPageContainer` が2回呼ばれている | `useRef` で初期化済みフラグを管理する |
+| グラスが初期表示のまま更新されない（エラーも出ない） | `textContainerUpgrade` の content が **999 バイト**を超え黙って拒否されている | 行境界で分割し `contentOffset` で分割送信（`contentLength` は全体長）。シミュレーターの stderr の WARN を確認 |
 | イベントが来ない | `isEventCapture: 0` になっている | イベントを受けたいコンテナに `isEventCapture: 1` をセット |
 | `containerName` が効かない | 16文字を超えている | 16文字以内に収める |
 | 画像が表示されない | `createStartUpPageContainer` 内で imageData を渡している | 作成後に `updateImageRawData` を別途呼ぶ |
