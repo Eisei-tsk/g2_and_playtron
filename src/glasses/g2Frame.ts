@@ -76,15 +76,18 @@ export function layoutRow(row: string[]): string {
   }
   return s.replace(/ +$/, '')
 }
-// ブラウザは rAF（16ms）で回るがG2は ~180ms/フレーム。dt をそのまま渡すと
-// 拡散などフレーム毎の処理の回数が変わりすぎるため、~45ms に刻んで複数回進める
-const SUBSTEP_MS = 45
+// ブラウザは rAF（~16ms）で回るがG2は ~180ms/フレーム。密度の拡散（にじみ）は
+// 「update 1回につき1回」かかるため、substep をブラウザの 60fps と同じ 16ms に
+// 刻んで回転数を揃える（45ms だと拡散が 1/3 になり、コロニーの縁が内側へ
+// にじまず「輪っかのまま塗りつぶされない」）
+const SUBSTEP_MS = 16
 
-// G2 用の規模チューニング（挙動は同一・数と大きさだけ横長画角に合わせる）
+// G2 用の規模チューニング（挙動は同一・数と大きさだけ横長画角に合わせる）。
+// ブラウザは中型コロニー22個の「重なり」で面を塗る。G2 も数で重ねる方向に寄せる
 const G2_TUNING = {
-  maxColonies: 6,
-  colonyRadius: [0.22, 0.42] as [number, number],
-  spreadScale: 1.6,
+  maxColonies: 14,
+  colonyRadius: [0.16, 0.32] as [number, number],
+  spreadScale: 1.3,
 }
 
 // 濃さ帯ごとの文字セット（軽い→重い）。ブラウザ版 RAMP_SETS の縮約。
@@ -153,10 +156,6 @@ export class G2Frame {
   private paintNature(grid: string[][], vs: VisualState) {
     const t = this.field.time
     const ambient = 0.03 + 0.08 * vs.tide
-    // 密度の上限（cap）は arc で ~2 まで育つ。テキストは輝度が無いぶん、
-    // その時点の cap で正規化してから字形帯へ割り当てる（飽和で全面が最重帯に
-    // 落ちるのを防ぎ、縁と内側のコントラストを保つ）
-    const capNow = 0.8 + 1.2 * vs.arc + 0.6 * vs.arc3
     const rims = this.field.colonyList.filter((c) => c.alive && c.R > 20)
     for (let cy = 0; cy < ROWS; cy++) {
       for (let cx = 0; cx < COLS; cx++) {
@@ -182,8 +181,11 @@ export class G2Frame {
         const blinkFreq = 1.2 + 2.6 * h1
         const blinkAmp = 0.08 + 0.16 * h2
         d *= 1 - blinkAmp + blinkAmp * Math.sin(t * blinkFreq + h1 * TAU)
-        const rel = Math.min(1, d / capNow)
-        let band = Math.min(RAMP_SETS.length - 1, Math.max(1, Math.round(rel * (RAMP_SETS.length - 1))))
+        // 字形帯への写像はブラウザ drawNature と同じ min(1, d)。
+        // 発展後の内側は飽和して最重帯で塗りつぶされるが、それがブラウザの
+        // 「全面が波打つ生きた面」の勢いそのもの（幅17pxの @MW は既に排除済みで
+        // 桁ズレの心配はない。明滅・呼吸・うねりが面の中の変化を作る）
+        let band = Math.min(RAMP_SETS.length - 1, Math.max(1, Math.round(Math.min(1, d) * (RAMP_SETS.length - 1))))
         // 「明るい縁」の翻訳: 輝度が無いので、リング近傍のセルは字形帯を持ち上げて
         // 重い字の輪郭として浮かばせる（繊維の欠け＝低密度セルはそのまま欠ける）
         if (d > 0.08) {
