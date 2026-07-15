@@ -12,10 +12,20 @@ const KEY_NOTES: Record<string, number> = {
   '6': 69, '7': 71, '8': 72, '9': 74,
 }
 
+// 横持ちモードの判定。縦長（比率1.3超 ≒ スマホ縦画面）なら中身を90°回転して
+// 横として使う。?rot=1 / ?rot=0 で強制切替（PC・シミュレーターでの確認用）
+const ROT_FORCE = new URLSearchParams(window.location.search).get('rot')
+const isRotated = () => {
+  if (ROT_FORCE === '1') return true
+  if (ROT_FORCE === '0') return false
+  return window.innerHeight > window.innerWidth * 1.3
+}
+
 
 function App() {
   const [audioReady, setAudioReady] = useState(false)
   const [connected, setConnected] = useState(false)
+  const [rotated, setRotated] = useState(isRotated)
   const [g2, setG2] = useState<G2Status>('idle')
   const [showDebug, setShowDebug] = useState(true)
   const [active, setActive] = useState<number[]>([])
@@ -89,6 +99,13 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 横持ちモードの追従（画面サイズ変化で判定し直す）
+  useEffect(() => {
+    const onResize = () => setRotated(isRotated())
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
   // 生成状態のポーリング表示
   useEffect(() => {
     if (!audioReady) return
@@ -104,7 +121,7 @@ function App() {
   const state = prog.touches === 0 ? 'waiting' : prog.development < 0.95 ? 'developing' : 'full'
 
   return (
-    <main className="conduct-root">
+    <main className={rotated ? 'conduct-root rotated' : 'conduct-root'}>
       {!audioReady ? (
         <div className="start-screen">
           <h1>Conduct</h1>

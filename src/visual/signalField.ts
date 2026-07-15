@@ -47,6 +47,12 @@ const cellHash = (cx: number, cy: number) => {
   const s = Math.sin(cx * 127.1 + cy * 311.7) * 43758.5453
   return s - Math.floor(s)
 }
+// ノート番号から決定的な擬似乱数（0..1）。座席候補の生成に使う
+// （どのインスタンスでも同じ値になる＝窓ごとの配置対応の要）
+const noteRand = (note: number, k: number) => {
+  const s = Math.sin(note * 12.9898 + k * 78.233) * 43758.5453
+  return s - Math.floor(s)
+}
 
 export type Colony = {
   id: number
@@ -179,24 +185,29 @@ export class SignalField {
   }
 
   // --- 配置（best-candidate 散布。偏り対策）---
+  // 候補はノート番号から決定的に生成し、スコアリングは正規化空間で行う。
+  // → ブラウザとグラス（画角の違う別インスタンス）が同じノートに対して
+  //   同じ相対位置を選び、「発生の起点」が2つの窓で対応する。
+  //   （その後の成長・伝播は各窓のランダムで、絵は少しずつ個性を持つ）
   private seatOf(note: number, w: number, h: number): { x: number; y: number } {
     const got = this.assigned.get(note)
     if (got) return got
-    const others = [...this.assigned.values(), ...this.colonies.map((c) => ({ x: c.x, y: c.y }))]
-    let best = { x: (0.1 + 0.8 * Math.random()) * w, y: (0.12 + 0.74 * Math.random()) * h }
+    const others = [...this.assigned.values()].map((p) => ({ u: p.x / w, v: p.y / h }))
+    let best = { u: 0.5, v: 0.5 }
     let bestScore = -1
     for (let k = 0; k < 14; k++) {
-      const cand = { x: (0.08 + 0.84 * Math.random()) * w, y: (0.1 + 0.78 * Math.random()) * h }
+      const cand = { u: 0.08 + 0.84 * noteRand(note, k * 2), v: 0.1 + 0.78 * noteRand(note, k * 2 + 1) }
       const score = others.length
-        ? Math.min(...others.map((o) => Math.hypot(o.x - cand.x, o.y - cand.y)))
-        : Math.hypot(cand.x - w / 2, cand.y - h / 2)
+        ? Math.min(...others.map((o) => Math.hypot(o.u - cand.u, o.v - cand.v)))
+        : Math.hypot(cand.u - 0.5, cand.v - 0.5)
       if (score > bestScore) {
         bestScore = score
         best = cand
       }
     }
-    this.assigned.set(note, best)
-    return best
+    const seat = { x: best.u * w, y: best.v * h }
+    this.assigned.set(note, seat)
+    return seat
   }
 
   private ensureGrid(w: number, h: number) {
