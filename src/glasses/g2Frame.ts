@@ -1,20 +1,21 @@
-// G2「手紙」ビュー — ブラウザ「景色」(signalField) の縮約移植（フェーズ2 S2 ①テキストのみ）
+// G2「受信の窓」— ブラウザ「景色」(signalField) の縮約移植（フェーズ2 S2 テキストのみ）
 //
-// シミュレーション（コロニー成長・検出フィット/ジッタ/カスケード・外乱波）は
-// ブラウザと同一の SignalField を 576×288 で回す。挙動と思想はそのまま、
-// 「数」と「見せ方」だけをグラスの解像度（48×13 セル・明るさ一律）に合わせて再発明する:
-//   規模     → コロニー同時 4個・大型（FieldTuning。1個が画面の 1/4〜1/3）
+// シミュレーション（コロニー成長・伝播・外乱波・状態）はブラウザと同一の
+// SignalField を 576×288 で回す。役割分担（2026-07-16 確定）:
+//   ブラウザ = 認識装置の窓（自然の場 ＋ 検出ボックス・検索網・ID ラベル）
+//   グラス   = 受信の窓（自然の場の ASCII のみ。枠・網・ラベルは描かない）
+// 同じ自然を2つの装置が別々に翻訳する構図。グラス側は「数」と「規模」だけを
+// 横長の画角（44×10 セル）に合わせて調整する:
+//   規模     → コロニー同時 6個・大型・伝播距離 1.6倍（G2_TUNING。枠いっぱいに散る）
 //   密度場   → ASCII ランプ（cap 正規化＋セル固有の明滅/入れ替え）
 //   縁の光   → 「縁は重い字」への翻訳（リング近傍のセルは字形帯を持ち上げる）
-//   検出     → コーナーマーカー + と枠線 -|（最大の1個だけフル枠）。
-//              カスケード検出は誕生アニメ（+ 1点 → 四隅 → 場に溶ける）
-//   網       → 表示中の箱の中心同士を . の点線で結ぶ（空いたセルにだけ置く）
-//   ラベル   → `ID:n .87` を1個だけ、数秒ごとに対象を巡回（スキャンしている感）
+//   揺らぎ   → ブラウザ drawNature と同式: うねり変位（場所ごとに振幅・向き・速さが
+//              変わる）＋大きな呼吸のパッチ＋外乱波＋明滅。空間スケールも
+//              ブラウザのセル単位（15px）に換算して一致させる
 //
 // フォントは非等幅のため、実測の文字幅テーブル＋誤差拡散レイアウト（layoutRow）で
-// 桁を揃える。フレームは**全て ASCII**（多バイト文字が混ざるとチャンク送信の
-// contentOffset がずれてフレームが崩壊する。罫線 ┌─│ は実幅 20px と巨大でもある）。
-// 16階調の輝度は文字では出せない → 必要なら ②画像コンテナのハイブリッドで補う。
+// 桁を揃える。フレームは**全て ASCII・999 バイト以内・1回で全置換**
+// （多バイト文字や分割送信・行末の埋めスペースはフレーム崩壊の元。CLAUDE.md 参照）。
 
 import { SignalField, type VisualState } from '../visual/signalField'
 
@@ -31,6 +32,8 @@ const LINE_H = 26 // 行送り（px, 実測）
 const PAD = 8 // コンテナの paddingLength
 const CW = PITCH
 const CH = LINE_H
+// ブラウザ drawNature のセルサイズ（px）。揺らぎの空間スケールを合わせる換算に使う
+const BROWSER_CELL = 15
 
 // グリフの実幅（px, シミュレーター実測。実機では要再測定）。未登録は 10 とみなす
 const GLYPH_W: Record<string, number> = {
@@ -77,16 +80,15 @@ export function layoutRow(row: string[]): string {
 // 拡散などフレーム毎の処理の回数が変わりすぎるため、~45ms に刻んで複数回進める
 const SUBSTEP_MS = 45
 
-// G2 用の規模チューニング（挙動は同一・数と大きさだけ）
-const G2_TUNING = { maxColonies: 4, colonyRadius: [0.18, 0.35] as [number, number] }
-// 表示するカスケード検出の上限と寿命（シミュレーション内には多数いてよい。見せるのは生まれたてだけ）
-const MAX_CASCADE_SHOWN = 6
-const CASCADE_SHOW_AGE = 2.2
-// ラベルの巡回間隔（秒）
-const LABEL_ROTATE_S = 4
+// G2 用の規模チューニング（挙動は同一・数と大きさだけ横長画角に合わせる）
+const G2_TUNING = {
+  maxColonies: 6,
+  colonyRadius: [0.22, 0.42] as [number, number],
+  spreadScale: 1.6,
+}
 
 // 濃さ帯ごとの文字セット（軽い→重い）。ブラウザ版 RAMP_SETS の縮約。
-// G2 フォント外の文字（˙ 等）は避け、ASCII と · のみ使う
+// 全て ASCII・実幅 12px 以下のグリフのみ（@ M W # は桁ズレの主犯なので使わない）
 const RAMP_SETS: string[][] = [
   [' '],
   ['.', ','],
@@ -94,7 +96,7 @@ const RAMP_SETS: string[][] = [
   ['+', '=', 'i', '!'],
   ['*', 'o', 'x'],
   ['Z', '7', 'x'],
-  ['8', '0'], // 12px 超のグリフ（@ M W #）は桁ズレの主犯なので使わない
+  ['8', '0'],
 ]
 
 const TAU = Math.PI * 2
@@ -102,17 +104,11 @@ const cellHash = (cx: number, cy: number) => {
   const s = Math.sin(cx * 127.1 + cy * 311.7) * 43758.5453
   return s - Math.floor(s)
 }
-const clampCX = (v: number) => Math.max(0, Math.min(COLS - 1, Math.round(v)))
-const clampCY = (v: number) => Math.max(0, Math.min(ROWS - 1, Math.round(v)))
-// 点線を置いてよいセル（空か最軽帯。場の絵を壊さない）
-const isFaint = (c: string) => c === ' ' || RAMP_SETS[1].includes(c)
-
-type ShownBox = { x0: number; y0: number; x1: number; y1: number; cx: number; cy: number }
 
 export class G2Frame {
   private field = new SignalField(G2_TUNING)
 
-  /** 1フレーム分のテキスト（改行区切り、右端の空白はトリム）を生成する */
+  /** 1フレーム分のテキスト（改行区切り・行末トリム・999バイト以内）を生成する */
   build(vs: VisualState, dtMs: number): string {
     let rem = Math.min(dtMs, 400)
     while (rem > 0) {
@@ -123,7 +119,6 @@ export class G2Frame {
 
     const grid: string[][] = Array.from({ length: ROWS }, () => Array(COLS).fill(' '))
     this.paintNature(grid, vs)
-    this.paintDetections(grid)
 
     // フレームは常に10行ちょうど・行末トリム・全体を1回の textContainerUpgrade で全置換。
     // 999 バイト制限（超過は黙って拒否）があるため、超えそうなら最軽帯のセルを
@@ -153,7 +148,8 @@ export class G2Frame {
     }
   }
 
-  // 密度場 → ASCII（drawNature の縮約。うねり変位・セル固有の明滅・文字入れ替えを維持）
+  // 密度場 → ASCII。ブラウザ drawNature の揺らぎ一式（うねり変位・呼吸パッチ・
+  // 外乱波・セル固有の明滅・文字入れ替え）を同じ式・同じ空間スケールで移植
   private paintNature(grid: string[][], vs: VisualState) {
     const t = this.field.time
     const ambient = 0.03 + 0.08 * vs.tide
@@ -166,13 +162,22 @@ export class G2Frame {
       for (let cx = 0; cx < COLS; cx++) {
         const px = PAD + (cx + 0.5) * CW
         const py = PAD + (cy + 0.5) * CH
+        // 揺らぎはブラウザと同じ空間スケールで（ブラウザの15pxセル単位に換算）
+        const bx = px / BROWSER_CELL
+        const by = py / BROWSER_CELL
         const h1 = cellHash(cx, cy)
         const h2 = cellHash(cx + 57, cy + 91)
-        const amb = ambient * (0.5 + 0.5 * Math.sin(cx * 0.8 + cy * 0.6 + t * 0.7)) * 0.5
+        const amb = ambient * (0.5 + 0.5 * Math.sin(bx * 0.8 + by * 0.6 + t * 0.7)) * 0.5
         const wave = this.field.waveAt(px, py)
-        let d = this.field.densityAt(px + wave.dx * 9, py + wave.dy * 9) + amb
+        // うねりの向き・速さも場所でゆるやかに変わる（低周波の空間変化。ブラウザと同式）
+        const swayAmp = 2 + 2.5 * (0.5 + 0.5 * Math.sin(bx * 0.11 - by * 0.07))
+        const swayX = swayAmp * Math.sin(by * 0.4 + t * (0.35 + 0.3 * h2) + h1 * TAU)
+        const swayY = swayAmp * 0.6 * Math.cos(bx * 0.3 - t * (0.25 + 0.2 * h1))
+        let d = this.field.densityAt(px + wave.dx * 9 + swayX, py + wave.dy * 9 + swayY) + amb
         if (d <= 0.03) continue
         d *= 1 + 0.35 * wave.w
+        // 大きな呼吸のパッチ（領域ごとに膨らみ・沈みのタイミングが違う。ブラウザと同式）
+        d *= 0.92 + 0.08 * Math.sin(bx * 0.12 - t * 0.4) * Math.cos(by * 0.1 + t * 0.3)
         // セルごとに周期・振幅が違う明滅
         const blinkFreq = 1.2 + 2.6 * h1
         const blinkAmp = 0.08 + 0.16 * h2
@@ -194,113 +199,6 @@ export class G2Frame {
         const swap = Math.floor(t / (0.9 + h2 * 1.6) + h1 * 12)
         grid[cy][cx] = set[(swap + ((h1 * 31) | 0)) % set.length]
       }
-    }
-  }
-
-  // 検出 → ブラケット/枠/点線/ラベル（drawDetections + drawMesh の再発明）
-  private paintDetections(grid: string[][]) {
-    const e = this.field.energy
-    if (e < 0.03) return
-    const t = this.field.time
-    const dets = this.field.detections
-
-    // --- 選抜: コロニー箱は全部（≤4）、カスケード箱は生まれたての少数だけ ---
-    const colonyBoxes = dets
-      .filter((d) => d.colonyId !== null)
-      .sort((a, b) => b.w * b.h - a.w * a.h)
-    const cascades = dets
-      .filter((d) => d.colonyId === null && d.age < CASCADE_SHOW_AGE)
-      .sort((a, b) => a.age - b.age)
-      .slice(0, MAX_CASCADE_SHOWN)
-
-    const cxOf = (x: number) => clampCX((x - PAD) / CW - 0.5)
-    const cyOf = (y: number) => clampCY((y - PAD) / CH - 0.5)
-    const toCells = (d: { x: number; y: number; w: number; h: number }): ShownBox => ({
-      x0: cxOf(d.x - d.w / 2),
-      x1: cxOf(d.x + d.w / 2),
-      y0: cyOf(d.y - d.h / 2),
-      y1: cyOf(d.y + d.h / 2),
-      cx: cxOf(d.x),
-      cy: cyOf(d.y),
-    })
-
-    // --- 点線メッシュ（箱より下・場より上）: コロニー箱同士を最寄り2本で結ぶ ---
-    const anchors = colonyBoxes.map(toCells)
-    const edges = new Set<string>()
-    for (let i = 0; i < anchors.length; i++) {
-      const near = anchors
-        .map((b, k) => ({ k, d: k === i ? Infinity : Math.hypot(b.cx - anchors[i].cx, b.cy - anchors[i].cy) }))
-        .sort((p, q) => p.d - q.d)
-        .slice(0, 2)
-      for (const n of near) {
-        if (!isFinite(n.d)) continue
-        edges.add(i < n.k ? `${i}-${n.k}` : `${n.k}-${i}`)
-      }
-    }
-    for (const key of edges) {
-      const [i, k] = key.split('-').map(Number)
-      this.dotLine(grid, anchors[i], anchors[k])
-    }
-
-    // --- コロニー箱: ブラケット主体、最大の1個だけフル罫線枠 ---
-    colonyBoxes.forEach((d, idx) => {
-      if (d.conf < 0.45 && Math.sin(t * 22 + d.phase) < -0.1) return // 低信頼度のチラつき
-      const b = toCells(d)
-      if (b.x1 - b.x0 < 1 || b.y1 - b.y0 < 1) return
-      if (idx === 0) {
-        // フレームは全て ASCII（罫線 ┌─│ は実幅 20px と巨大な上、多バイト文字が
-        // 混ざるとチャンク送信の offset がずれてフレームが崩壊する）
-        for (let x = b.x0 + 1; x < b.x1; x++) {
-          grid[b.y0][x] = '-'
-          grid[b.y1][x] = '-'
-        }
-        for (let y = b.y0 + 1; y < b.y1; y++) {
-          grid[y][b.x0] = '|'
-          grid[y][b.x1] = '|'
-        }
-      }
-      grid[b.y0][b.x0] = '+'
-      grid[b.y0][b.x1] = '+'
-      grid[b.y1][b.x0] = '+'
-      grid[b.y1][b.x1] = '+'
-    })
-
-    // --- カスケード箱: 誕生アニメ（+ 1文字 → ブラケット → 表示から溶けて消える）---
-    for (const d of cascades) {
-      if (d.conf < 0.45 && Math.sin(t * 22 + d.phase) < -0.1) continue
-      const b = toCells(d)
-      if (d.age < 0.35 || b.x1 - b.x0 < 1 || b.y1 - b.y0 < 1) {
-        grid[b.cy][b.cx] = '+'
-        continue
-      }
-      grid[b.y0][b.x0] = '+'
-      grid[b.y0][b.x1] = '+'
-      grid[b.y1][b.x0] = '+'
-      grid[b.y1][b.x1] = '+'
-      // 発見元と点線で繋ぐ（発見カスケードの連鎖が見えるように）
-      const p = dets.find((o) => o.id === d.parentId)
-      if (p) this.dotLine(grid, b, toCells(p))
-    }
-
-    // --- ラベル: 1個だけ、数秒ごとに対象を巡回（装置がスキャンしている感）---
-    const candidates = colonyBoxes.filter((d) => d.conf > 0.5)
-    if (candidates.length) {
-      const d = candidates[Math.floor(t / LABEL_ROTATE_S) % candidates.length]
-      const b = toCells(d)
-      const label = `ID:${d.id} .${Math.round(d.conf * 100).toString().padStart(2, '0')}`
-      for (let k = 0; k < label.length && b.x0 + 1 + k < COLS; k++) {
-        grid[b.y0][b.x0 + 1 + k] = label[k]
-      }
-    }
-  }
-
-  // セル単位の点線（空いたセルにだけ · を置く。箱や場の字は上書きしない）
-  private dotLine(grid: string[][], a: ShownBox, b: ShownBox) {
-    const steps = Math.max(Math.abs(b.cx - a.cx), Math.abs(b.cy - a.cy))
-    for (let k = 1; k < steps; k++) {
-      const cx = Math.round(a.cx + ((b.cx - a.cx) * k) / steps)
-      const cy = Math.round(a.cy + ((b.cy - a.cy) * k) / steps)
-      if (isFaint(grid[cy][cx])) grid[cy][cx] = '.'
     }
   }
 }

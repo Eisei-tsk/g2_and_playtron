@@ -64,6 +64,8 @@ export type FieldTuning = {
   maxColonies?: number
   /** コロニー最大半径の min(w,h) に対する割合レンジ（既定 [0.1, 0.24]） */
   colonyRadius?: [number, number]
+  /** 伝播・死滅時再生の飛距離の倍率（既定 1）。横長の画角では上げて全体に散らす */
+  spreadScale?: number
 }
 // 検出ボックス（bounding box）。コロニーにフィットし、ジッタ・チラつき・即消滅
 export type Det = {
@@ -247,7 +249,7 @@ export class SignalField {
       // 成熟したコロニーは時折、子を伝播（場を広げる役。旧・網の役割をこちらへ）
       if (c.age > 3 && this.netEnergy > 0.15 && Math.random() < dt * (0.06 + 0.12 * vs.arc)) {
         const a = Math.random() * TAU
-        const d = 110 + Math.random() * 200
+        const d = (110 + Math.random() * 200) * (this.tuning.spreadScale ?? 1)
         const nx = Math.min(w - 20, Math.max(20, c.x + Math.cos(a) * d))
         const ny = Math.min(h - 20, Math.max(20, c.y + Math.sin(a) * d))
         this.spawnColony(nx, ny, w, h)
@@ -256,7 +258,7 @@ export class SignalField {
         c.alive = false
         if (this.netEnergy > 0.05) {
           const a = Math.random() * TAU
-          const d = 90 + Math.random() * 200
+          const d = (90 + Math.random() * 200) * (this.tuning.spreadScale ?? 1)
           this.spawnColony(
             Math.min(w - 20, Math.max(20, c.x + Math.cos(a) * d)),
             Math.min(h - 20, Math.max(20, c.y + Math.sin(a) * d)),
