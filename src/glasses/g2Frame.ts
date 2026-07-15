@@ -53,6 +53,8 @@ const SPACE_W = 5
 const glyphW = (c: string) => GLYPH_W[c] ?? 10
 // textContainerUpgrade 1回の content 上限 999 バイトに対するフレーム予算（余裕込み）
 const FRAME_BYTE_BUDGET = 990
+// 明暗→字の重さ翻訳のガンマ（大きいほど暗部が深く沈む。1で線形）
+const BRIGHT_GAMMA = 2
 
 /**
  * 誤差拡散レイアウト: セル配列を「実幅を追跡しながら」文字列へ。
@@ -175,20 +177,24 @@ export class G2Frame {
         const swayAmp = 2 + 2.5 * (0.5 + 0.5 * Math.sin(bx * 0.11 - by * 0.07))
         const swayX = swayAmp * Math.sin(by * 0.4 + t * (0.35 + 0.3 * h2) + h1 * TAU)
         const swayY = swayAmp * 0.6 * Math.cos(bx * 0.3 - t * (0.25 + 0.2 * h1))
-        let d = this.field.densityAt(px + wave.dx * 9 + swayX, py + wave.dy * 9 + swayY) + amb
+        const d = this.field.densityAt(px + wave.dx * 9 + swayX, py + wave.dy * 9 + swayY) + amb
         if (d <= 0.03) continue
-        d *= 1 + 0.35 * wave.w
-        // 大きな呼吸のパッチ（領域ごとに膨らみ・沈みのタイミングが違う。ブラウザと同式）
-        d *= 0.92 + 0.08 * Math.sin(bx * 0.12 - t * 0.4) * Math.cos(by * 0.1 + t * 0.3)
-        // セルごとに周期・振幅が違う明滅
+        // 明暗の揺らぎ（ブラウザでは緑の明度になる変調）を係数 m として分離。
+        // 式は drawNature と同一: 波の増幅・呼吸のパッチ・セル固有の明滅
+        let m = 1 + 0.35 * wave.w
+        m *= 0.92 + 0.08 * Math.sin(bx * 0.12 - t * 0.4) * Math.cos(by * 0.1 + t * 0.3)
         const blinkFreq = 1.2 + 2.6 * h1
         const blinkAmp = 0.08 + 0.16 * h2
-        d *= 1 - blinkAmp + blinkAmp * Math.sin(t * blinkFreq + h1 * TAU)
-        // 字形帯への写像はブラウザ drawNature と同じ min(1, d)。
-        // 発展後の内側は飽和して最重帯で塗りつぶされるが、それがブラウザの
-        // 「全面が波打つ生きた面」の勢いそのもの（幅17pxの @MW は既に排除済みで
-        // 桁ズレの心配はない。明滅・呼吸・うねりが面の中の変化を作る）
-        let band = Math.min(RAMP_SETS.length - 1, Math.max(1, Math.round(Math.min(1, d) * (RAMP_SETS.length - 1))))
+        m *= 1 - blinkAmp + blinkAmp * Math.sin(t * blinkFreq + h1 * TAU)
+        // 明暗 → 字の重さへの翻訳。グラスには輝度が無いので、明るさの揺らぎを
+        // 帯レベルに乗算する: 暗い瞬間は帯が落ち、谷では . , まで沈み、明るく
+        // 戻れば元の重さへ。ガンマで谷を深くし（6段階の量子化でも見えるように）、
+        // 端数は確率的丸め＝時間ディザでフレーム間の連続階調にする。
+        // 飽和領域（min(1,d)=1 で明暗が消えていた full の面）でも波打ちが見える
+        let bandF = Math.min(1, d) * (RAMP_SETS.length - 1)
+        bandF *= Math.pow(Math.max(0.3, Math.min(1.6, m)), BRIGHT_GAMMA)
+        let band = Math.floor(bandF) + (Math.random() < bandF - Math.floor(bandF) ? 1 : 0)
+        band = Math.min(RAMP_SETS.length - 1, Math.max(1, band))
         // 「明るい縁」の翻訳: 輝度が無いので、リング近傍のセルは字形帯を持ち上げて
         // 重い字の輪郭として浮かばせる（繊維の欠け＝低密度セルはそのまま欠ける）
         if (d > 0.08) {
