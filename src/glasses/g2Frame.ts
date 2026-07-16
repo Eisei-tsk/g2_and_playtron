@@ -127,8 +127,11 @@ export class G2Frame {
     }
 
     const grid: string[][] = Array.from({ length: ROWS }, () => Array(COLS).fill(' '))
-    this.paintNature(grid, vs)
-    if (title) this.stampTitle(grid)
+    if (title) {
+      this.stampTitle(grid) // 蓋は黒地にタイトルのみ（漂いも描かない）
+    } else {
+      this.paintNature(grid, vs)
+    }
 
     // フレームは常に10行ちょうど・行末トリム・全体を1回の textContainerUpgrade で全置換。
     // 999 バイト制限（超過は黙って拒否）があるため、超えそうなら最軽帯のセルを
@@ -148,20 +151,16 @@ export class G2Frame {
     return body
   }
 
-  // タイトル蓋: 音が始まる前（ブラウザで Connect される前）に表示する。
+  // タイトル蓋: 音が始まる前（ブラウザで Connect される前）は黒地にタイトルのみ。
   // ボタンは無い（AudioContext の解錠はブラウザ側の gesture が担う）
   private stampTitle(grid: string[][]) {
-    const stamp = (row: number, text: string, gap: number) => {
-      const width = text.length * (1 + gap) - gap
-      let cx = Math.max(0, Math.floor((COLS - width) / 2))
-      for (const ch of text) {
-        if (cx >= COLS) break
-        grid[row][cx] = ch
-        cx += 1 + gap
-      }
+    const text = 'CONDUCT'
+    const width = text.length * 2 - 1 // 1セル空きのレタースペーシング
+    let cx = Math.max(0, Math.floor((COLS - width) / 2))
+    for (const ch of text) {
+      grid[4][cx] = ch
+      cx += 2
     }
-    stamp(3, 'CONDUCT', 1)
-    stamp(5, 'connecting...', 0)
   }
 
   // 最軽帯（band1: . ,）のセルを n セルに1個残しで消す

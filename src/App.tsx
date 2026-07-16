@@ -12,13 +12,13 @@ const KEY_NOTES: Record<string, number> = {
   '6': 69, '7': 71, '8': 72, '9': 74,
 }
 
-// 横持ちモードの判定。縦長（比率1.3超 ≒ スマホ縦画面）なら中身を90°回転して
-// 横として使う。?rot=1 / ?rot=0 で強制切替（PC・シミュレーターでの確認用）
+// 横持ちモードの判定。縦長（比率1.25超。スマホ縦≈2.16・シミュレーターwebview≈1.29）
+// なら中身を90°回転して横として使う。?rot=1 / ?rot=0 で強制切替
 const ROT_FORCE = new URLSearchParams(window.location.search).get('rot')
 const isRotated = () => {
   if (ROT_FORCE === '1') return true
   if (ROT_FORCE === '0') return false
-  return window.innerHeight > window.innerWidth * 1.3
+  return window.innerHeight > window.innerWidth * 1.25
 }
 
 
