@@ -13,7 +13,9 @@ export default function SignalCanvas() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    const field = new SignalField()
+    // ブラウザは「認識装置の窓」: 自然（ASCII の場）は描かず、座標系グリッドと
+    // 検索網・検出ボックスだけを見せる（自然の像はグラス側の担当）
+    const field = new SignalField({ showNature: false })
     let raf = 0
     let last = performance.now()
     let w = 0

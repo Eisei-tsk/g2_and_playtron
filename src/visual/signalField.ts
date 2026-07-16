@@ -72,6 +72,9 @@ export type FieldTuning = {
   colonyRadius?: [number, number]
   /** 伝播・死滅時再生の飛距離の倍率（既定 1）。横長の画角では上げて全体に散らす */
   spreadScale?: number
+  /** 自然（ASCII の場）を描くか（既定 true）。ブラウザは検索網・ボックスだけを
+   * 見せる「認識装置の窓」なので false（シミュレーション自体は動き続ける） */
+  showNature?: boolean
 }
 // 検出ボックス（bounding box）。コロニーにフィットし、ジッタ・チラつき・即消滅
 export type Det = {
@@ -120,7 +123,7 @@ export class SignalField {
     ctx.fillRect(0, 0, w, h)
 
     this.drawGrid(ctx, w, h, vs)
-    this.drawNature(ctx, w, h, vs)
+    if (this.tuning.showNature ?? true) this.drawNature(ctx, w, h, vs)
     this.drawMesh(ctx)
     this.drawDetections(ctx)
   }

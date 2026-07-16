@@ -116,8 +116,9 @@ const cellHash = (cx: number, cy: number) => {
 export class G2Frame {
   private field = new SignalField(G2_TUNING)
 
-  /** 1フレーム分のテキスト（改行区切り・行末トリム・999バイト以内）を生成する */
-  build(vs: VisualState, dtMs: number): string {
+  /** 1フレーム分のテキスト（改行区切り・行末トリム・999バイト以内）を生成する。
+   * title=true でタイトル蓋（CONDUCT + connecting...）を薄い漂いの上に重ねる */
+  build(vs: VisualState, dtMs: number, title = false): string {
     let rem = Math.min(dtMs, 400)
     while (rem > 0) {
       const step = Math.min(rem, SUBSTEP_MS)
@@ -127,6 +128,7 @@ export class G2Frame {
 
     const grid: string[][] = Array.from({ length: ROWS }, () => Array(COLS).fill(' '))
     this.paintNature(grid, vs)
+    if (title) this.stampTitle(grid)
 
     // フレームは常に10行ちょうど・行末トリム・全体を1回の textContainerUpgrade で全置換。
     // 999 バイト制限（超過は黙って拒否）があるため、超えそうなら最軽帯のセルを
@@ -144,6 +146,22 @@ export class G2Frame {
       body = grid.map(layoutRow).join('\n')
     }
     return body
+  }
+
+  // タイトル蓋: 音が始まる前（ブラウザで Connect される前）に表示する。
+  // ボタンは無い（AudioContext の解錠はブラウザ側の gesture が担う）
+  private stampTitle(grid: string[][]) {
+    const stamp = (row: number, text: string, gap: number) => {
+      const width = text.length * (1 + gap) - gap
+      let cx = Math.max(0, Math.floor((COLS - width) / 2))
+      for (const ch of text) {
+        if (cx >= COLS) break
+        grid[row][cx] = ch
+        cx += 1 + gap
+      }
+    }
+    stamp(3, 'CONDUCT', 1)
+    stamp(5, 'connecting...', 0)
   }
 
   // 最軽帯（band1: . ,）のセルを n セルに1個残しで消す

@@ -2,7 +2,7 @@
 // 入力を生成エンジンへ流し、待機 / 育ち具合(development) / 層を可視化する。
 import { useEffect, useRef, useState } from 'react'
 import { connectBridge, type NoteMessage } from './ws/bridgeClient'
-import { startAudio, noteOn, noteOff, isStarted, getProgress } from './audio/engine'
+import { startAudio, unlockAudio, noteOn, noteOff, isStarted, getProgress } from './audio/engine'
 import SignalCanvas from './visual/SignalCanvas'
 import { initG2, stopG2, getG2Status, type G2Status } from './glasses/g2'
 
@@ -114,9 +114,19 @@ function App() {
   }, [audioReady])
 
   const start = async () => {
+    unlockAudio() // gesture 内で同期的に解錠（グラスタップ由来の pending があっても合流させる）
     await startAudio()
     setAudioReady(true)
   }
+
+  // グラスタップ経由で engine が起動した場合に追従して蓋を開ける
+  useEffect(() => {
+    if (audioReady) return
+    const id = setInterval(() => {
+      if (isStarted()) setAudioReady(true)
+    }, 500)
+    return () => clearInterval(id)
+  }, [audioReady])
 
   const state = prog.touches === 0 ? 'waiting' : prog.development < 0.95 ? 'developing' : 'full'
 
@@ -126,7 +136,7 @@ function App() {
         <div className="start-screen">
           <h1>Conduct</h1>
           <button className="start-btn" onClick={start}>
-            ▶ Start
+            Connect
           </button>
         </div>
       ) : (

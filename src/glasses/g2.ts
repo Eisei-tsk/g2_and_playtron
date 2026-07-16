@@ -17,8 +17,9 @@ import {
   TextContainerProperty,
   TextContainerUpgrade,
   StartUpPageCreateResult,
+  OsEventTypeList,
 } from '@evenrealities/even_hub_sdk'
-import { isStarted, getVisualState } from '../audio/engine'
+import { isStarted, getVisualState, startAudio } from '../audio/engine'
 import type { VisualState } from '../visual/signalField'
 import { G2Frame } from './g2Frame'
 import { buildCalibFrame } from './g2Calib'
@@ -83,6 +84,17 @@ export async function initG2(timeoutMs = 4000): Promise<boolean> {
   }
 
   status = 'connected'
+
+  // グラスのタップで AudioContext の解錠を試みる（WKWebView の設定次第で動く環境
+  // なら儲けもの。gesture 扱いされない環境では pending のまま無害 → ブラウザの
+  // Connect（unlockAudio）で解錠された時点で合流する。startAudio は単一飛行）
+  bridge.onEvenHubEvent((ev) => {
+    const type = ev?.textEvent?.eventType ?? ev?.sysEvent?.eventType
+    if ((type === OsEventTypeList.CLICK_EVENT || type === undefined) && !isStarted()) {
+      startAudio().catch(() => {})
+    }
+  })
+
   startRenderLoop()
   return true
 }
@@ -170,7 +182,9 @@ function startRenderLoop(): void {
       // 999 バイト超は黙って拒否される制限があり、また contentOffset による分割送信は
       // シミュレーターでは機能しない（offset を無視して全置換される）ため、
       // フレーム側（g2Frame.build）が 999 バイト以内を保証する
-      const content = calPage !== null ? buildCalibFrame(calPage) : frame.build(vs, dt)
+      // 音が始まる前（非デモ）はタイトル蓋（CONDUCT + connecting... + 薄い漂い）
+      const title = !isDemo && !isStarted()
+      const content = calPage !== null ? buildCalibFrame(calPage) : frame.build(vs, dt, title)
       await bridge.textContainerUpgrade(
         new TextContainerUpgrade({
           containerID: 1,

@@ -148,8 +148,28 @@ export function getVisualState() {
   }
 }
 
-/** AudioContext を解除して音響グラフ・生成ループ・共有レイヤーを構築する。**必ずユーザー操作内で呼ぶ** */
-export async function startAudio(): Promise<void> {
+let startPromise: Promise<void> | null = null
+
+/** AudioContext の解錠だけを行う。**必ずユーザー操作のハンドラ内で同期的に呼ぶ**。
+ * （グラスタップ等 gesture 外からの startAudio が Tone.start() 待ちで pending に
+ * なっていても、実際の gesture 内でこれを呼べば解錠されて合流できる） */
+export function unlockAudio(): void {
+  void Tone.start()
+}
+
+/** AudioContext を解除して音響グラフ・生成ループ・共有レイヤーを構築する。
+ * 単一飛行: ブラウザの Connect とグラスタップの両方から呼ばれても初期化は一度だけ */
+export function startAudio(): Promise<void> {
+  if (!startPromise) {
+    startPromise = doStartAudio().catch((e) => {
+      startPromise = null
+      throw e
+    })
+  }
+  return startPromise
+}
+
+async function doStartAudio(): Promise<void> {
   if (started) return
   await Tone.start()
 
