@@ -68,12 +68,13 @@ npm rebuild <package-name>
 
 ## 2. MIDI ブリッジ / WebSocket のローカル運用
 
-Playtron からの MIDI を受け取って WebSocket で配信する Node.js ブリッジサーバーは、**ローカル（localhost）限定で運用する**。
+Playtron からの MIDI を受け取って WebSocket で配信する Node.js ブリッジサーバーは、**localhost または同一 LAN 内限定で運用する**（インターネットには公開しない）。
 
 | 項目 | 方針 |
 |---|---|
-| バインドアドレス | `localhost` / `127.0.0.1` に限定し、LAN・外部に公開しない |
-| 認証 | ローカル限定のため不要。外部公開する設計に変える場合は認証・オリジン検証を追加する |
+| バインドアドレス | 既定は `127.0.0.1`（localhost 限定）。**スマホの Even Hub WebView へ配信する時のみ `npm run bridge:lan`（`0.0.0.0`）で LAN 内公開**し、セッション終了後は停止する |
+| LAN 公開の条件 | 自宅 Wi-Fi・スマホテザリング等の**信頼できるネットワークのみ**。公共 Wi-Fi では使わない（AP isolation で通らないことも多い） |
+| 認証 | LAN 内限定・ノート番号の一方向配信のみのため不要。インターネット公開する設計に変える場合は認証・オリジン検証を追加する |
 | 受信データ | ブリッジは `{type, note, velocity, channel}` のみを送る。任意コード実行につながる入力は扱わない |
 | 実機テスト時 | `evenhub qr` で開発サーバーを LAN 公開する際は、同一 Wi-Fi の信頼できるネットワークでのみ行う |
 
@@ -174,7 +175,7 @@ node_modules/
 - [ ] `.claude/settings.json` が存在し、機密ファイルの `deny` ルールが設定されている
 - [ ] `.gitignore` に `.env*`, `secrets/`, `*.key`, `*.pem`, `node_modules/` が含まれている
 - [ ] `package-lock.json` が git にコミットされている
-- [ ] MIDI ブリッジ / WebSocket サーバーが localhost 限定でバインドされている
+- [ ] MIDI ブリッジ / WebSocket サーバーが localhost 限定でバインドされている（LAN 公開は `bridge:lan` を信頼できるネットワークで・セッション中のみ）
 - [ ] 機密情報（API キー、トークン等）がソースコードにハードコードされていない
 - [ ] `npm audit` でクリティカルな脆弱性がない
 

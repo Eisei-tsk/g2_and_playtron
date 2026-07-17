@@ -62,7 +62,7 @@ Playtron の MIDI を受け取り WebSocket で全クライアントへ配信す
 
 - `easymidi` は native アドオン（`node-midi`）を node-gyp でビルドする。**`ignore-scripts=true` だと動かない** → SECURITY.md で `min-release-age=7` のみ採用した判断根拠の一つ。
 - **キーボードシミュレーターモードを用意する**: Playtron 無しでも `1`〜`9` キーで noteon/noteoff を発火させてテストできるようにする（開発のメイン手段）。
-- WebSocket は **localhost 限定**で運用し、外部公開しない（SECURITY.md §2）。
+- WebSocket は **localhost 限定（既定）または同一 LAN 内限定（`npm run bridge:lan`。スマホの Even Hub WebView へ配信する時）**で運用し、インターネットには公開しない（SECURITY.md §2）。既定ポートは **8765**（8080 は Docker 等と衝突しやすい）。クライアントは `location.hostname` に自動追従。
 
 ### Tone.js 音響設計（要点）
 

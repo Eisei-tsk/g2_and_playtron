@@ -78,6 +78,34 @@ body {
   display: block;
 }
 
+/* デバッグ用タッチ入力（?keys=1。Playtron 無しの実機テスト用） */
+.touch-keys {
+  position: fixed;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 5;
+}
+
+.touch-key {
+  width: 46px;
+  height: 46px;
+  background: rgba(15, 35, 18, 0.55);
+  color: #9effa0;
+  border: 1px solid #2f6f31;
+  border-radius: 6px;
+  font: inherit;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.touch-key:active {
+  background: #1b4a20;
+}
+
 /* デバッグ情報（隅の小パネル・d で切替） */
 .debug {
   position: fixed;

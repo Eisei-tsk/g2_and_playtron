@@ -12,6 +12,10 @@ const KEY_NOTES: Record<string, number> = {
   '6': 69, '7': 71, '8': 72, '9': 74,
 }
 
+// デバッグ用タッチ入力（?keys=1）: Playtron/キーボードが無い実機（スマホ）でも
+// ノートを触れるように、画面下に 1–9 のタッチパッドを出す
+const SHOW_KEYS = new URLSearchParams(window.location.search).has('keys')
+
 // 横持ちモードの判定。縦長（比率1.25超。スマホ縦≈2.16・シミュレーターwebview≈1.29）
 // なら中身を90°回転して横として使う。?rot=1 / ?rot=0 で強制切替
 const ROT_FORCE = new URLSearchParams(window.location.search).get('rot')
@@ -142,6 +146,25 @@ function App() {
       ) : (
         <>
           <SignalCanvas />
+
+          {SHOW_KEYS && (
+            <div className="touch-keys">
+              {Object.entries(KEY_NOTES).map(([k, n]) => (
+                <button
+                  key={k}
+                  className="touch-key"
+                  onPointerDown={(e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId)
+                    handleNote(n, true)
+                  }}
+                  onPointerUp={() => handleNote(n, false)}
+                  onPointerCancel={() => handleNote(n, false)}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+          )}
 
           {showDebug && (
             <div className="debug">
