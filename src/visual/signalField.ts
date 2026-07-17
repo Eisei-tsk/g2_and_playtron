@@ -87,7 +87,7 @@ export type Det = {
   aspect: number
   phase: number
 }
-type Disturb = {
+export type Disturb = {
   ripple: boolean
   x: number; y: number; dir: number
   t0: number; speed: number; amp: number; wl: number; ttl: number
@@ -173,6 +173,14 @@ export class SignalField {
   // --- 外部レンダラ（G2 テキスト縮約）向けの読み取り口 ---
   densityAt(x: number, y: number): number {
     return this.densAt(x, y)
+  }
+  /** ノートの座席（G2 のエフェクト発火位置用。決定的なのでブラウザの箱と対応する） */
+  seatFor(note: number, w: number, h: number): { x: number; y: number } {
+    return this.seatOf(note, w, h)
+  }
+  /** 外乱波のリスト（G2 が突風イベントを句読点エフェクトとして可視化するために読む） */
+  get disturbList(): readonly Disturb[] {
+    return this.disturbs
   }
   get detections(): readonly Det[] {
     return this.dets

@@ -21,7 +21,7 @@ import {
 } from '@evenrealities/even_hub_sdk'
 import { isStarted, getVisualState, startAudio } from '../audio/engine'
 import type { VisualState } from '../visual/signalField'
-import { G2Frame } from './g2Frame'
+import { G2Frame, type EffectKind } from './g2Frame'
 import { buildCalibFrame } from './g2Calib'
 
 export type G2Status = 'idle' | 'connecting' | 'connected' | 'unavailable' | 'error'
@@ -114,6 +114,12 @@ const calPage: number | null = (() => {
   const v = new URLSearchParams(location.search).get('g2cal')
   return v === null ? null : Number(v) || 0
 })()
+// 句読点エフェクトの検証（開発ツール。?g2fx=ripple|sweep|blackout|collapse で6秒ごとに発火）
+const fxTest: EffectKind | null = (() => {
+  if (typeof location === 'undefined') return null
+  const v = new URLSearchParams(location.search).get('g2fx')
+  return v === 'ripple' || v === 'sweep' || v === 'blackout' || v === 'collapse' ? v : null
+})()
 
 // 音を鳴らす前の待機状態（ゼロ状態でも薄く文字が漂う）
 function neutralState(t: number): VisualState {
@@ -165,6 +171,7 @@ function startRenderLoop(): void {
   const frame = new G2Frame()
   const t0 = performance.now()
   let last = t0
+  let lastFxFire = 0
   loopTimer = setInterval(async () => {
     if (!bridge || inflight) return
     inflight = true
@@ -184,6 +191,10 @@ function startRenderLoop(): void {
       // フレーム側（g2Frame.build）が 999 バイト以内を保証する
       // 音が始まる前（非デモ）はタイトル蓋（CONDUCT + connecting... + 薄い漂い）
       const title = !isDemo && !isStarted()
+      if (fxTest && elapsed - lastFxFire > 8) {
+        lastFxFire = elapsed
+        frame.triggerEffect(fxTest, undefined, undefined, true)
+      }
       const content = calPage !== null ? buildCalibFrame(calPage) : frame.build(vs, dt, title)
       await bridge.textContainerUpgrade(
         new TextContainerUpgrade({

@@ -113,8 +113,184 @@ const cellHash = (cx: number, cy: number) => {
   return s - Math.floor(s)
 }
 
+// --- 句読点エフェクト（規則正しいパターンの演出）---
+// ノイズの場はそのままに、発展のタイミングで画面全体の規則パターンを重ねる。
+// 低解像度・低fpsでは「大きな形・一貫したステップ移動」だけが動きとして読めるため、
+// 外乱波（シミュレーション内では変位が小さすぎて見えない）をこの句読点に翻訳する。
+//   blackout: 真っ暗⇔表示のストロボ（セクション到来 = 音の whoosh と同期）
+//   ripple:   触れた物の座席から同心円が広がる（水面に滴）
+//   sweep:    対角線の帯が画面を掃く（ランダム突風の可視化）
+//   collapse: 全セルが下へ崩れ落ち、また降り戻る（大きな節目）
+export type EffectKind = 'blackout' | 'ripple' | 'sweep' | 'collapse'
+type Effect = { kind: EffectKind; t0: number; dur: number; x: number; y: number; dir: number }
+
+const FX_DUR: Record<EffectKind, number> = {
+  blackout: 1.1,
+  ripple: 2.2,
+  sweep: 1.6,
+  collapse: 3.2,
+}
+// 発火後のクールダウン（連発でうるさくならないように）
+const FX_COOLDOWN = 6
+// 発展後（arc がこの値を超えたら）ランダム発火を解禁。平均間隔と最低間隔
+const FX_RANDOM_ARC = 0.45
+const FX_RANDOM_MEAN_S = 30
+const FX_RANDOM_MIN_GAP = 14
+const FX_RANDOM_KINDS: [EffectKind, number][] = [
+  ['ripple', 0.35],
+  ['sweep', 0.35],
+  ['blackout', 0.15],
+  ['collapse', 0.15],
+]
+
 export class G2Frame {
   private field = new SignalField(G2_TUNING)
+  private fx: Effect | null = null
+  private fxCooldownUntil = 0
+  private lastRandomFx = 0
+  private prevHeld = new Set<number>()
+  private prevStage = 0
+  private lastGustT0 = 0
+  private collapseFired = false
+
+  /** 句読点エフェクトを発火する（blackout は割り込み可・他は空いている時だけ。
+   * force はテスト用パラメータ ?g2fx= 専用でクールダウンを無視する） */
+  triggerEffect(kind: EffectKind, at?: { x: number; y: number }, dir?: number, force = false) {
+    const t = this.field.time
+    if (!force) {
+      if (this.fx && kind !== 'blackout') return
+      if (t < this.fxCooldownUntil && kind !== 'blackout') return
+    }
+    this.fx = {
+      kind,
+      t0: t,
+      dur: FX_DUR[kind],
+      x: at?.x ?? G2_W / 2,
+      y: at?.y ?? G2_H / 2,
+      dir: dir ?? Math.PI / 5,
+    }
+  }
+
+  // 状態の変化から句読点を発火する（音のイベントと同期）
+  private detectTriggers(vs: VisualState, dtMs: number) {
+    const t = this.field.time
+    // セクション到来 → 全点滅（whoosh と同期する一番強い句読点）
+    if (vs.stage > this.prevStage && this.prevStage >= 0) this.triggerEffect('blackout')
+    this.prevStage = vs.stage
+    // 新しいタッチ → その物の座席から波紋
+    for (const n of vs.held) {
+      if (!this.prevHeld.has(n)) {
+        this.triggerEffect('ripple', this.field.seatFor(n, G2_W, G2_H))
+      }
+    }
+    this.prevHeld = new Set(vs.held)
+    // シミュレーション内の突風 → 斜め波として可視化
+    // （突風は数秒おきに起きるため、毎回は出さず 30% だけ句読点に昇格させる）
+    for (const d of this.field.disturbList) {
+      if (!d.ripple && d.t0 > this.lastGustT0) {
+        this.lastGustT0 = d.t0
+        if (Math.random() < 0.3) this.triggerEffect('sweep', undefined, d.dir)
+      }
+    }
+    // full 到達 → 一度だけ砂崩れ
+    if (!this.collapseFired && vs.arc > 0.97) {
+      this.collapseFired = true
+      this.triggerEffect('collapse')
+    }
+    // 発展が進んだらランダムでも起こす（平均 ~30秒に1回・最低間隔つき）
+    if (!this.fx && vs.arc > FX_RANDOM_ARC && t - this.lastRandomFx > FX_RANDOM_MIN_GAP) {
+      const p = ((dtMs / 1000) / FX_RANDOM_MEAN_S) * ((vs.arc - FX_RANDOM_ARC) / (1 - FX_RANDOM_ARC))
+      if (Math.random() < p) {
+        let r = Math.random()
+        let kind: EffectKind = 'ripple'
+        for (const [k, w] of FX_RANDOM_KINDS) {
+          if (r < w) { kind = k; break }
+          r -= w
+        }
+        this.lastRandomFx = t
+        this.triggerEffect(kind, { x: (0.2 + 0.6 * Math.random()) * G2_W, y: (0.2 + 0.6 * Math.random()) * G2_H }, Math.random() * TAU)
+      }
+    }
+    // 終了処理
+    if (this.fx && t - this.fx.t0 > this.fx.dur) {
+      this.fx = null
+      this.fxCooldownUntil = t + FX_COOLDOWN
+    }
+  }
+
+  // アクティブなエフェクトを描画済みグリッドへ適用する（場そのものは変えない後処理）
+  private applyEffect(grid: string[][]) {
+    if (!this.fx) return
+    const fx = this.fx
+    const p = Math.min(1, (this.field.time - fx.t0) / fx.dur)
+    const heavy = (cx: number, cy: number) => RAMP_SETS[6][(cellHash(cx, cy) * RAMP_SETS[6].length) | 0]
+    if (fx.kind === 'blackout') {
+      // 6分割の偶数区間で全消灯（真っ暗⇔表示のストロボ。黒から入る）
+      if (Math.floor(p * 6) % 2 === 0) {
+        for (const row of grid) row.fill(' ')
+      }
+      return
+    }
+    if (fx.kind === 'ripple') {
+      // 同心円3本が座席から外へ（円上のセルだけ最重帯に点灯）
+      const front = p * 620
+      for (let cy = 0; cy < ROWS; cy++) {
+        for (let cx = 0; cx < COLS; cx++) {
+          const dx = PAD + (cx + 0.5) * CW - fx.x
+          const dy = PAD + (cy + 0.5) * CH - fx.y
+          const dist = Math.hypot(dx, dy)
+          for (let i = 0; i < 3; i++) {
+            const r = front - i * 78
+            if (r > 0 && Math.abs(dist - r) < 14) {
+              grid[cy][cx] = heavy(cx, cy)
+              break
+            }
+          }
+        }
+      }
+      return
+    }
+    if (fx.kind === 'sweep') {
+      // 対角線の帯が画面を掃く（帯の中は空セルも点灯して波面が見える）
+      const cos = Math.cos(fx.dir)
+      const sin = Math.sin(fx.dir)
+      const corners = [
+        0 * cos + 0 * sin, G2_W * cos + 0 * sin, 0 * cos + G2_H * sin, G2_W * cos + G2_H * sin,
+      ]
+      const minP = Math.min(...corners)
+      const maxP = Math.max(...corners)
+      const band = 44
+      const front = minP + p * (maxP - minP + band)
+      for (let cy = 0; cy < ROWS; cy++) {
+        for (let cx = 0; cx < COLS; cx++) {
+          const proj = (PAD + (cx + 0.5) * CW) * cos + (PAD + (cy + 0.5) * CH) * sin
+          if (proj > front - band && proj <= front) {
+            grid[cy][cx] = grid[cy][cx] === ' ' ? '*' : heavy(cx, cy)
+          }
+        }
+      }
+      return
+    }
+    // collapse: 下へ崩れ落ちて（列ごとに積み上がり）、一拍おいて、降り戻る
+    // （積み上がった状態を保持する区間が無いと 5.5fps では一瞬で通り過ぎて見えない）
+    const phase = p < 0.35 ? p / 0.35 : p < 0.6 ? 1 : (1 - p) / 0.4
+    const shift = Math.round(ROWS * phase * phase)
+    if (shift <= 0) return
+    for (let cx = 0; cx < COLS; cx++) {
+      const col: { r: number; ch: string }[] = []
+      for (let cy = 0; cy < ROWS; cy++) {
+        if (grid[cy][cx] !== ' ') col.push({ r: cy, ch: grid[cy][cx] })
+        grid[cy][cx] = ' '
+      }
+      let bottomFree = ROWS
+      for (let i = col.length - 1; i >= 0; i--) {
+        const target = Math.min(col[i].r + shift, bottomFree - 1)
+        if (target < 0) continue
+        grid[target][cx] = col[i].ch
+        bottomFree = target
+      }
+    }
+  }
 
   /** 1フレーム分のテキスト（改行区切り・行末トリム・999バイト以内）を生成する。
    * title=true でタイトル蓋（CONDUCT + connecting...）を薄い漂いの上に重ねる */
@@ -130,7 +306,9 @@ export class G2Frame {
     if (title) {
       this.stampTitle(grid) // 蓋は黒地にタイトルのみ（漂いも描かない）
     } else {
+      this.detectTriggers(vs, dtMs)
       this.paintNature(grid, vs)
+      this.applyEffect(grid)
     }
 
     // フレームは常に10行ちょうど・行末トリム・全体を1回の textContainerUpgrade で全置換。
