@@ -1,11 +1,14 @@
-// G2 接続スケルトン（フェーズ2 S1 — テスト環境の疎通）
+// G2 グラス表示（フェーズ2 S2 — ビジュアル縮約移植 ①テキストのみ）
 //
 // waitForEvenAppBridge → 全画面テキストコンテナ1つ（isEventCapture:1）を作成し、
-// textContainerUpgrade を ~180ms ごとに流す「コマ撮りパイプライン」の疎通を確認する。
+// engine の getVisualState() を購読して G2Frame（signalField の縮約レンダラ）が
+// 作る ASCII フレームを ~180ms ごとに textContainerUpgrade で流す。
 // 素のブラウザ（Even Hub / シミュレーター外）ではタイムアウトして 'unavailable' になり、
 // ブラウザ側のアート表示には影響しない。
 //
-// 実際のビジュアル（EXPLORATION §7.2.1 の縮約移植）は次ステップでこの上に載せる。
+// 音（startAudio）が始まる前は待機状態（薄いドリフトのみ）を流す。
+// `?g2demo=1` を付けると合成の VisualState（タッチと発展のスクリプト）で駆動され、
+// 音を鳴らさなくてもシミュレーターでビジュアルを検証できる。
 
 import {
   waitForEvenAppBridge,
@@ -14,17 +17,20 @@ import {
   TextContainerProperty,
   TextContainerUpgrade,
   StartUpPageCreateResult,
+  OsEventTypeList,
 } from '@evenrealities/even_hub_sdk'
+import { isStarted, getVisualState, startAudio } from '../audio/engine'
+import type { VisualState } from '../visual/signalField'
+import { G2Frame, type EffectKind } from './g2Frame'
+import { buildCalibFrame } from './g2Calib'
 
 export type G2Status = 'idle' | 'connecting' | 'connected' | 'unavailable' | 'error'
 
 const FRAME_MS = 180 // 更新間隔（100〜200ms が目安。上限は実機検証）
-const COLS = 46 // テスト用の1行の文字数（非等幅前提のラフ値）
 
 let bridge: EvenAppBridge | null = null
 let status: G2Status = 'idle'
 let loopTimer: ReturnType<typeof setInterval> | null = null
-let frame = 0
 let inflight = false // 前フレームの送信が終わるまで次を送らない
 
 export function getG2Status(): G2Status {
@@ -78,7 +84,18 @@ export async function initG2(timeoutMs = 4000): Promise<boolean> {
   }
 
   status = 'connected'
-  startTestLoop()
+
+  // グラスのタップで AudioContext の解錠を試みる（WKWebView の設定次第で動く環境
+  // なら儲けもの。gesture 扱いされない環境では pending のまま無害 → ブラウザの
+  // Connect（unlockAudio）で解錠された時点で合流する。startAudio は単一飛行）
+  bridge.onEvenHubEvent((ev) => {
+    const type = ev?.textEvent?.eventType ?? ev?.sysEvent?.eventType
+    if ((type === OsEventTypeList.CLICK_EVENT || type === undefined) && !isStarted()) {
+      startAudio().catch(() => {})
+    }
+  })
+
+  startRenderLoop()
   return true
 }
 
@@ -89,38 +106,103 @@ export function stopG2(): void {
   }
 }
 
-// 疎通テストのフレーム（動きが見えれば textContainerUpgrade ストリーミングが機能している）
-function buildTestFrame(f: number): string {
-  const spinner = '|/-\\'[f % 4]
-  const pos = f % COLS
-  const track = '·'.repeat(pos) + '@' + '·'.repeat(COLS - 1 - pos)
-  const wave = Array.from({ length: COLS }, (_, i) => {
-    const v = Math.sin(i * 0.35 + f * 0.25)
-    return v > 0.55 ? '*' : v > 0 ? ':' : v > -0.55 ? '.' : ' '
-  }).join('')
-  return [
-    `CONDUCT — G2 link test ${spinner}`,
-    `frame ${String(f).padStart(5, '0')}  (${FRAME_MS}ms/frame)`,
-    '',
-    track,
-    wave,
-  ].join('\n')
+const isDemo =
+  typeof location !== 'undefined' && new URLSearchParams(location.search).has('g2demo')
+// フォント幅キャリブレーション（開発ツール。?g2cal=0/1/2 でページ指定）
+const calPage: number | null = (() => {
+  if (typeof location === 'undefined') return null
+  const v = new URLSearchParams(location.search).get('g2cal')
+  return v === null ? null : Number(v) || 0
+})()
+// 句読点エフェクトの検証（開発ツール。?g2fx=ripple|sweep|blackout|collapse で6秒ごとに発火）
+const fxTest: EffectKind | null = (() => {
+  if (typeof location === 'undefined') return null
+  const v = new URLSearchParams(location.search).get('g2fx')
+  return v === 'ripple' || v === 'sweep' || v === 'blackout' || v === 'collapse' ? v : null
+})()
+
+// 音を鳴らす前の待機状態（ゼロ状態でも薄く文字が漂う）
+function neutralState(t: number): VisualState {
+  return {
+    held: [],
+    echoes: [],
+    gesture: null,
+    development: 0,
+    arc: 0,
+    arc3: 0,
+    stage: 0,
+    tide: 0.5 + 0.5 * Math.sin(t * 0.06),
+    brightness: 0.4,
+    shimmer: 0.1,
+    breadth: 0,
+  }
 }
 
-function startTestLoop(): void {
+// `?g2demo=1` 用の合成状態。「触っては離す」を合間の余白つきで繰り返し、
+// arc が数分かけて満ちる（実機の「触れられるのは 2〜4 個・触りっぱなしにはならない」を模す）
+function demoState(t: number): VisualState {
+  const held: number[] = []
+  const phase = t % 36
+  if (phase >= 2 && phase < 8) held.push(65)
+  if (phase >= 12 && phase < 17) held.push(71)
+  if (phase >= 22 && phase < 28) {
+    held.push(60)
+    if (phase >= 24) held.push(65) // 重なる瞬間もつくる
+  }
+  const arc = Math.min(1, t / 180)
+  const gestureId = Math.floor(t / 9)
+  return {
+    held,
+    echoes: [],
+    gesture: { kind: 'greeting', notes: [held[0] ?? 65], id: gestureId },
+    development: Math.min(1, t / 10),
+    arc,
+    arc3: Math.min(1, t / 420),
+    stage: arc > 0.75 ? 3 : arc > 0.5 ? 2 : arc > 0.25 ? 1 : 0,
+    tide: 0.5 + 0.5 * Math.sin(t * 0.07),
+    brightness: 0.5,
+    shimmer: 0.3 + 0.3 * Math.sin(t * 0.11),
+    breadth: Math.min(3, Math.ceil(t / 12)),
+  }
+}
+
+function startRenderLoop(): void {
   stopG2()
-  frame = 0
+  const frame = new G2Frame()
+  const t0 = performance.now()
+  let last = t0
+  let lastFxFire = 0
   loopTimer = setInterval(async () => {
     if (!bridge || inflight) return
     inflight = true
     try {
+      const now = performance.now()
+      const dt = now - last
+      last = now
+      const elapsed = (now - t0) / 1000
+      const vs = isDemo
+        ? demoState(elapsed)
+        : isStarted()
+          ? (getVisualState() as VisualState)
+          : neutralState(elapsed)
+      // フレームは必ず1回の呼び出しで全置換する。
+      // 999 バイト超は黙って拒否される制限があり、また contentOffset による分割送信は
+      // シミュレーターでは機能しない（offset を無視して全置換される）ため、
+      // フレーム側（g2Frame.build）が 999 バイト以内を保証する
+      // 音が始まる前（非デモ）はタイトル蓋（CONDUCT + connecting... + 薄い漂い）
+      const title = !isDemo && !isStarted()
+      if (fxTest && elapsed - lastFxFire > 8) {
+        lastFxFire = elapsed
+        frame.triggerEffect(fxTest, undefined, undefined, true)
+      }
+      const content = calPage !== null ? buildCalibFrame(calPage) : frame.build(vs, dt, title)
       await bridge.textContainerUpgrade(
         new TextContainerUpgrade({
           containerID: 1,
           containerName: 'main',
           contentOffset: 0,
-          contentLength: 2000,
-          content: buildTestFrame(frame++), // 2000文字以内
+          contentLength: content.length,
+          content,
         }),
       )
     } catch {

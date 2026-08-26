@@ -47,8 +47,14 @@ const cellHash = (cx: number, cy: number) => {
   const s = Math.sin(cx * 127.1 + cy * 311.7) * 43758.5453
   return s - Math.floor(s)
 }
+// ノート番号から決定的な擬似乱数（0..1）。座席候補の生成に使う
+// （どのインスタンスでも同じ値になる＝窓ごとの配置対応の要）
+const noteRand = (note: number, k: number) => {
+  const s = Math.sin(note * 12.9898 + k * 78.233) * 43758.5453
+  return s - Math.floor(s)
+}
 
-type Colony = {
+export type Colony = {
   id: number
   x: number; y: number
   R: number; maxR: number
@@ -56,8 +62,22 @@ type Colony = {
   seed: number; fiberFreq: number
   alive: boolean
 }
+
+// 表示先ごとのチューニング（挙動は同一のまま、規模だけ変える）。
+// ブラウザは既定値。G2（48×13 セル相当の解像度）は少数・大型に絞る
+export type FieldTuning = {
+  /** 同時生存コロニー数の上限（既定 22） */
+  maxColonies?: number
+  /** コロニー最大半径の min(w,h) に対する割合レンジ（既定 [0.1, 0.24]） */
+  colonyRadius?: [number, number]
+  /** 伝播・死滅時再生の飛距離の倍率（既定 1）。横長の画角では上げて全体に散らす */
+  spreadScale?: number
+  /** 自然（ASCII の場）を描くか（既定 true）。ブラウザは検索網・ボックスだけを
+   * 見せる「認識装置の窓」なので false（シミュレーション自体は動き続ける） */
+  showNature?: boolean
+}
 // 検出ボックス（bounding box）。コロニーにフィットし、ジッタ・チラつき・即消滅
-type Det = {
+export type Det = {
   id: number
   colonyId: number | null // null = 発見カスケードによる検出
   parentId: number | null // 発見元（メッシュの繋がり）
@@ -67,13 +87,18 @@ type Det = {
   aspect: number
   phase: number
 }
-type Disturb = {
+export type Disturb = {
   ripple: boolean
   x: number; y: number; dir: number
   t0: number; speed: number; amp: number; wl: number; ttl: number
 }
 
 export class SignalField {
+  private tuning: FieldTuning
+  constructor(tuning: FieldTuning = {}) {
+    this.tuning = tuning
+  }
+
   private colonies: Colony[] = []
   private dets: Det[] = []
   private disturbs: Disturb[] = []
@@ -92,6 +117,19 @@ export class SignalField {
   private nextDetId = 10
 
   render(ctx: CanvasRenderingContext2D, w: number, h: number, vs: VisualState, dtMs: number) {
+    this.update(w, h, vs, dtMs)
+
+    ctx.fillStyle = '#000'
+    ctx.fillRect(0, 0, w, h)
+
+    this.drawGrid(ctx, w, h, vs)
+    if (this.tuning.showNature ?? true) this.drawNature(ctx, w, h, vs)
+    this.drawMesh(ctx)
+    this.drawDetections(ctx)
+  }
+
+  /** シミュレーションだけを1ステップ進める（canvas 以外のレンダラ＝G2 テキスト縮約からも使う） */
+  update(w: number, h: number, vs: VisualState, dtMs: number) {
     const dt = Math.min(dtMs, 50) / 1000
     this.t += dt
     this.ensureGrid(w, h)
@@ -130,35 +168,57 @@ export class SignalField {
     this.feedColonies(dt)
     this.updateDensity(dt, vs)
     this.updateDetections(dt, vs)
+  }
 
-    ctx.fillStyle = '#000'
-    ctx.fillRect(0, 0, w, h)
-
-    this.drawGrid(ctx, w, h, vs)
-    this.drawNature(ctx, w, h, vs)
-    this.drawMesh(ctx)
-    this.drawDetections(ctx)
+  // --- 外部レンダラ（G2 テキスト縮約）向けの読み取り口 ---
+  densityAt(x: number, y: number): number {
+    return this.densAt(x, y)
+  }
+  /** ノートの座席（G2 のエフェクト発火位置用。決定的なのでブラウザの箱と対応する） */
+  seatFor(note: number, w: number, h: number): { x: number; y: number } {
+    return this.seatOf(note, w, h)
+  }
+  /** 外乱波のリスト（G2 が突風イベントを句読点エフェクトとして可視化するために読む） */
+  get disturbList(): readonly Disturb[] {
+    return this.disturbs
+  }
+  get detections(): readonly Det[] {
+    return this.dets
+  }
+  get colonyList(): readonly Colony[] {
+    return this.colonies
+  }
+  get energy(): number {
+    return this.netEnergy
+  }
+  get time(): number {
+    return this.t
   }
 
   // --- 配置（best-candidate 散布。偏り対策）---
+  // 候補はノート番号から決定的に生成し、スコアリングは正規化空間で行う。
+  // → ブラウザとグラス（画角の違う別インスタンス）が同じノートに対して
+  //   同じ相対位置を選び、「発生の起点」が2つの窓で対応する。
+  //   （その後の成長・伝播は各窓のランダムで、絵は少しずつ個性を持つ）
   private seatOf(note: number, w: number, h: number): { x: number; y: number } {
     const got = this.assigned.get(note)
     if (got) return got
-    const others = [...this.assigned.values(), ...this.colonies.map((c) => ({ x: c.x, y: c.y }))]
-    let best = { x: (0.1 + 0.8 * Math.random()) * w, y: (0.12 + 0.74 * Math.random()) * h }
+    const others = [...this.assigned.values()].map((p) => ({ u: p.x / w, v: p.y / h }))
+    let best = { u: 0.5, v: 0.5 }
     let bestScore = -1
     for (let k = 0; k < 14; k++) {
-      const cand = { x: (0.08 + 0.84 * Math.random()) * w, y: (0.1 + 0.78 * Math.random()) * h }
+      const cand = { u: 0.08 + 0.84 * noteRand(note, k * 2), v: 0.1 + 0.78 * noteRand(note, k * 2 + 1) }
       const score = others.length
-        ? Math.min(...others.map((o) => Math.hypot(o.x - cand.x, o.y - cand.y)))
-        : Math.hypot(cand.x - w / 2, cand.y - h / 2)
+        ? Math.min(...others.map((o) => Math.hypot(o.u - cand.u, o.v - cand.v)))
+        : Math.hypot(cand.u - 0.5, cand.v - 0.5)
       if (score > bestScore) {
         bestScore = score
         best = cand
       }
     }
-    this.assigned.set(note, best)
-    return best
+    const seat = { x: best.u * w, y: best.v * h }
+    this.assigned.set(note, seat)
+    return seat
   }
 
   private ensureGrid(w: number, h: number) {
@@ -186,12 +246,13 @@ export class SignalField {
   }
 
   private spawnColony(x: number, y: number, w: number, h: number) {
-    if (this.colonies.filter((c) => c.alive).length >= 22) return
+    if (this.colonies.filter((c) => c.alive).length >= (this.tuning.maxColonies ?? 22)) return
     const base = Math.min(w, h)
+    const [r0, r1] = this.tuning.colonyRadius ?? [0.1, 0.24]
     this.colonies.push({
       id: this.nextColonyId++,
       x, y, R: 6,
-      maxR: base * (0.1 + 0.14 * Math.random()),
+      maxR: base * (r0 + (r1 - r0) * Math.random()),
       age: 0,
       life: 16 + Math.random() * 18,
       seed: Math.random() * 1000,
@@ -210,7 +271,7 @@ export class SignalField {
       // 成熟したコロニーは時折、子を伝播（場を広げる役。旧・網の役割をこちらへ）
       if (c.age > 3 && this.netEnergy > 0.15 && Math.random() < dt * (0.06 + 0.12 * vs.arc)) {
         const a = Math.random() * TAU
-        const d = 110 + Math.random() * 200
+        const d = (110 + Math.random() * 200) * (this.tuning.spreadScale ?? 1)
         const nx = Math.min(w - 20, Math.max(20, c.x + Math.cos(a) * d))
         const ny = Math.min(h - 20, Math.max(20, c.y + Math.sin(a) * d))
         this.spawnColony(nx, ny, w, h)
@@ -219,7 +280,7 @@ export class SignalField {
         c.alive = false
         if (this.netEnergy > 0.05) {
           const a = Math.random() * TAU
-          const d = 90 + Math.random() * 200
+          const d = (90 + Math.random() * 200) * (this.tuning.spreadScale ?? 1)
           this.spawnColony(
             Math.min(w - 20, Math.max(20, c.x + Math.cos(a) * d)),
             Math.min(h - 20, Math.max(20, c.y + Math.sin(a) * d)),
@@ -453,7 +514,7 @@ export class SignalField {
     if (this.disturbs.length > 6) this.disturbs.shift()
   }
 
-  private waveAt(x: number, y: number): { dx: number; dy: number; w: number } {
+  waveAt(x: number, y: number): { dx: number; dy: number; w: number } {
     let dx = 0
     let dy = 0
     let wv = 0
