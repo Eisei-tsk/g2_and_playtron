@@ -18,11 +18,11 @@
 
 | 項目 | 状態 |
 |---|---|
-| フェーズ | フェーズ2: G2 移植（テスト環境から）|
-| 直近の作業 | S0: バージョン再調査・SDK 0.0.11 へ更新（0.0.12 / Sim 0.8.0 は隔離中→7/17・7/15 以降）|
-| ブランチ | `feature/g2-port` |
+| フェーズ | フェーズ2: G2 移植（textColor 多層ビジュアル）|
+| 直近の作業 | `feature/g2-port` を main にマージ（PR #8）。SDK 0.0.14 調査と textColor 多層方式（案A/案B）の設計決定（2026-08-26）|
+| ブランチ | `feat/g2-textcolor` |
 | Node / TS | 22.22.1（`.node-version`）/ TypeScript ~5.9 |
-| Even 版 | SDK 0.0.11 / CLI 0.1.13 / Simulator 0.7.3（SDK 0.0.12・Sim 0.8.0 は保留中）|
+| Even 版 | SDK 0.0.11 / CLI 0.1.13 / Simulator 0.7.3（SDK 0.0.14 / Sim 0.9.1 / CLI 0.1.14 へ 2026-08-27 以降に更新予定。隔離 `min-release-age=7` のため）|
 
 ---
 
@@ -50,7 +50,13 @@
 - [x] 0. **G2 SDK / CLI / Simulator のアップデート調査・更新**（2026-06）。SDK 0.0.10 / CLI 0.1.13 / Simulator 0.7.3 へ。SDK 型定義は差分ゼロ（API 変更なし）。Simulator に `--automation-port`（HTTP 自動化 API: G2 スクショ/入力/console）。CLAUDE.md 反映済み
 - [x] 1. Even Hub WebApp として構成（G2 SDK 接続）— `src/glasses/g2.ts`: waitForEvenAppBridge → 全画面テキストコンテナ → 180ms の textContainerUpgrade ループ。**シミュレーターで疎通確認済み**（自動化 API のスクショでフレーム進行を検証）。素のブラウザではタイムアウトで無効化
 - [ ] 2. IMU 取得・Tone.js パラメータ連動
-- [ ] 3. G2 用 ASCII テキスト表示の実装（ブラウザ「景色」の縮約移植。EXPLORATION §7.2.1/7.3）
+- [~] 3. G2 用 ASCII テキスト表示の実装（ブラウザ「景色」の縮約移植。EXPLORATION §7.2.1/7.3）。**textColor 多層方式で「字形＝密度、輝度＝明滅」の二軸に**（2026-08-26 設計決定。案A→案B の2段構え）
+  - [ ] 3a. 層分離リファクタ: `src/glasses/g2Frame.ts` の `build()` を「輝度層ごとの4枚」を返せる構造に分離（m→層の量子化＋時間ディザ、層ごとの `layoutRow`・バイト予算。単層出力もフォールバックとして残す。SDK 非依存）
+  - [ ] 3b. SDK 0.0.14 / Simulator 0.9.1 / CLI 0.1.14 へ更新（08-27 以降）+ CLAUDE.md 版履歴更新
+  - [ ] 3c. 透過検証（案Bの成立条件）: 全画面テキストコンテナを重ね、無字部分が下層を隠さないか Simulator で確認。NG なら案A止まり
+  - [ ] 3d. 案A: 現行1コンテナのまま `TextContainerUpgrade` に textColor を配管（blackout=textColor:0、呼吸=4⇔3）
+  - [ ] 3e. 案B: 全画面テキスト4層（textColor 1〜4）。m を帯に乗算するハックを外し、縁の光を本物の輝度で
+  - [ ] 3f. 実機検証: 4回送信/フレーム(180ms)が BLE で捌けるか（Even App 2.2.9 以上が必要）
 - [ ] 4. R1 リング操作（ラッチ・リセット・密度調整）
 - [ ] 5. フェーズ1 ブラウザ画面と G2 表示の同時動作
 
@@ -78,3 +84,4 @@
 | 2026-07-08 | ビジュアル | ASCII の多様化: 濃さ帯ごとの**文字セット**（`.·,` → `:;˙` → `+=i1!` → `*oex74` → `#ZR08` → `@MW`）をセルごとに散らし、違う周期でゆっくり入れ替え（グラデーションの重なりを複雑に・データっぽく）。**明滅はセルごとに周期/振幅がバラバラ**、うねりの振幅・方向も場所ごとに変化、**大きな呼吸のパッチ**（領域ごとに膨らみ/沈みのタイミングがずれる）を追加 → 全面到達時にパッチワーク状に生きて動く面へ |
 | 2026-07-13 | フェーズ2 / S0 | G2 移植着手。バージョン再調査: SDK **0.0.11 へ更新**（6/22公開→隔離通過。位置/カメラ/アルバム API 追加のみ・型互換）。**SDK 0.0.12**（7/10公開: `zOrderIndex`・画像LZ4低遅延）と **Simulator 0.8.0**（7/8公開: zOrder 対応）は隔離中 → **7/17・7/15 以降にペアで採用検討**。`npm audit fix` で vite 8.1.4 等へ（脆弱性0）。build 検証 OK。CLAUDE.md 版履歴更新 |
 | 2026-07-13 | フェーズ2 / S1 | **G2 接続スケルトン＋テスト環境の疎通**。`src/glasses/g2.ts`（waitForEvenAppBridge・全画面テキストコンテナ・180ms upgrade ループ・素のブラウザはタイムアウトで unavailable）、App に配線（デバッグパネルに g2 状態）。`evenhub-simulator --automation-port` で実行し、`/api/screenshot/glasses` の連続スクショで**フレーム進行（テキストストリーミング）を検証 OK**。console にエラーなし |
+| 2026-08-26 | フェーズ2 / S3 | Even SDK 更新調査（SDK 0.0.12〜**0.0.14**: `zOrderIndex`・画像LZ4・**textColor（輝度0〜4）**・長押し・メニュー等。0.0.11→0.0.14 は型定義上追加のみで破壊的変更なし）。**textColor 多層方式（案A/案B 2段構え）を設計決定**（採用対象は textColor のみ。案B=輝度別4層が本命、案A=単層 textColor がフォールバック。詳細は docs/decisions.md）。`feature/g2-port` を main にマージ（PR #8）。パッケージ更新は隔離明けの 08-27 以降 |
