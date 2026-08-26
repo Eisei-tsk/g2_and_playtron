@@ -24,6 +24,20 @@ body {
   height: 100%;
 }
 
+/* 横持ちモード: 縦画面固定の WebView（Even アプリ等）で、中身を 90° 回転して
+   スマホを横に持って使う（スマホゲームの横持ち方式）。画面比率がグラス(2:1)に
+   近い横長になり、景色の構図がグラスと対応する。transform された要素は
+   fixed 子要素（canvas / debug）の containing block になるので座標系ごと回る */
+.conduct-root.rotated {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vh;
+  height: 100vw;
+  transform: rotate(90deg) translateY(-100%);
+  transform-origin: top left;
+}
+
 /* 起動画面 */
 .start-screen {
   display: flex;
@@ -62,6 +76,34 @@ body {
   position: fixed;
   inset: 0;
   display: block;
+}
+
+/* デバッグ用タッチ入力（?keys=1。Playtron 無しの実機テスト用） */
+.touch-keys {
+  position: fixed;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 5;
+}
+
+.touch-key {
+  width: 46px;
+  height: 46px;
+  background: rgba(15, 35, 18, 0.55);
+  color: #9effa0;
+  border: 1px solid #2f6f31;
+  border-radius: 6px;
+  font: inherit;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.touch-key:active {
+  background: #1b4a20;
 }
 
 /* デバッグ情報（隅の小パネル・d で切替） */

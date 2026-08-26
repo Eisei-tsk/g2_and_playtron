@@ -13,7 +13,9 @@ export default function SignalCanvas() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    const field = new SignalField()
+    // ブラウザは「認識装置の窓」: 自然（ASCII の場）は描かず、座標系グリッドと
+    // 検索網・検出ボックスだけを見せる（自然の像はグラス側の担当）
+    const field = new SignalField({ showNature: false })
     let raf = 0
     let last = performance.now()
     let w = 0
@@ -21,8 +23,11 @@ export default function SignalCanvas() {
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
-      w = window.innerWidth
-      h = window.innerHeight
+      // 横持ちモード（.conduct-root.rotated）では親のレイアウト寸法が
+      // 縦横入れ替わるため、window ではなく親要素のサイズに追従する
+      const parent = canvas.parentElement
+      w = parent ? parent.clientWidth : window.innerWidth
+      h = parent ? parent.clientHeight : window.innerHeight
       canvas.width = w * dpr
       canvas.height = h * dpr
       canvas.style.width = `${w}px`
@@ -31,6 +36,8 @@ export default function SignalCanvas() {
     }
     resize()
     window.addEventListener('resize', resize)
+    const ro = new ResizeObserver(resize)
+    if (canvas.parentElement) ro.observe(canvas.parentElement)
 
     const loop = (now: number) => {
       const dt = now - last
@@ -46,6 +53,7 @@ export default function SignalCanvas() {
     return () => {
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', resize)
+      ro.disconnect()
     }
   }, [])
 

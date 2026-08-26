@@ -2,7 +2,7 @@
 // 入力を生成エンジンへ流し、待機 / 育ち具合(development) / 層を可視化する。
 import { useEffect, useRef, useState } from 'react'
 import { connectBridge, type NoteMessage } from './ws/bridgeClient'
-import { startAudio, noteOn, noteOff, isStarted, getProgress } from './audio/engine'
+import { startAudio, unlockAudio, noteOn, noteOff, isStarted, getProgress } from './audio/engine'
 import SignalCanvas from './visual/SignalCanvas'
 import { initG2, stopG2, getG2Status, type G2Status } from './glasses/g2'
 
@@ -12,10 +12,24 @@ const KEY_NOTES: Record<string, number> = {
   '6': 69, '7': 71, '8': 72, '9': 74,
 }
 
+// デバッグ用タッチ入力（?keys=1）: Playtron/キーボードが無い実機（スマホ）でも
+// ノートを触れるように、画面下に 1–9 のタッチパッドを出す
+const SHOW_KEYS = new URLSearchParams(window.location.search).has('keys')
+
+// 横持ちモードの判定。縦長（比率1.25超。スマホ縦≈2.16・シミュレーターwebview≈1.29）
+// なら中身を90°回転して横として使う。?rot=1 / ?rot=0 で強制切替
+const ROT_FORCE = new URLSearchParams(window.location.search).get('rot')
+const isRotated = () => {
+  if (ROT_FORCE === '1') return true
+  if (ROT_FORCE === '0') return false
+  return window.innerHeight > window.innerWidth * 1.25
+}
+
 
 function App() {
   const [audioReady, setAudioReady] = useState(false)
   const [connected, setConnected] = useState(false)
+  const [rotated, setRotated] = useState(isRotated)
   const [g2, setG2] = useState<G2Status>('idle')
   const [showDebug, setShowDebug] = useState(true)
   const [active, setActive] = useState<number[]>([])
@@ -89,6 +103,13 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 横持ちモードの追従（画面サイズ変化で判定し直す）
+  useEffect(() => {
+    const onResize = () => setRotated(isRotated())
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
   // 生成状態のポーリング表示
   useEffect(() => {
     if (!audioReady) return
@@ -97,24 +118,53 @@ function App() {
   }, [audioReady])
 
   const start = async () => {
+    unlockAudio() // gesture 内で同期的に解錠（グラスタップ由来の pending があっても合流させる）
     await startAudio()
     setAudioReady(true)
   }
 
+  // グラスタップ経由で engine が起動した場合に追従して蓋を開ける
+  useEffect(() => {
+    if (audioReady) return
+    const id = setInterval(() => {
+      if (isStarted()) setAudioReady(true)
+    }, 500)
+    return () => clearInterval(id)
+  }, [audioReady])
+
   const state = prog.touches === 0 ? 'waiting' : prog.development < 0.95 ? 'developing' : 'full'
 
   return (
-    <main className="conduct-root">
+    <main className={rotated ? 'conduct-root rotated' : 'conduct-root'}>
       {!audioReady ? (
         <div className="start-screen">
           <h1>Conduct</h1>
           <button className="start-btn" onClick={start}>
-            ▶ Start
+            Connect
           </button>
         </div>
       ) : (
         <>
           <SignalCanvas />
+
+          {SHOW_KEYS && (
+            <div className="touch-keys">
+              {Object.entries(KEY_NOTES).map(([k, n]) => (
+                <button
+                  key={k}
+                  className="touch-key"
+                  onPointerDown={(e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId)
+                    handleNote(n, true)
+                  }}
+                  onPointerUp={() => handleNote(n, false)}
+                  onPointerCancel={() => handleNote(n, false)}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+          )}
 
           {showDebug && (
             <div className="debug">

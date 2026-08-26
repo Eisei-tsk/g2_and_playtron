@@ -14,7 +14,10 @@ export type BridgeHandlers = {
   onStatus?: (connected: boolean) => void
 }
 
-const DEFAULT_URL = 'ws://localhost:8080'
+// 接続先はページを配信したホストに合わせる:
+//   PC ブラウザ（localhost:5180）→ ws://localhost:8765
+//   スマホ WebView（Mac の LAN IP:5180）→ ws://<Mac の IP>:8765（bridge は --lan で起動）
+const DEFAULT_URL = `ws://${typeof location !== 'undefined' && location.hostname ? location.hostname : 'localhost'}:8765`
 
 /** ブリッジに接続する。戻り値の関数を呼ぶと切断する。 */
 export function connectBridge(handlers: BridgeHandlers, url: string = DEFAULT_URL): () => void {

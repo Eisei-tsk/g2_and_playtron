@@ -136,7 +136,7 @@ Playtronからのゲームを受け取り、WebSocketで配信する。
 const easymidi = require('easymidi')
 const WebSocket = require('ws')
 
-const wss = new WebSocket.Server({ port: 8080 })
+const wss = new WebSocket.Server({ port: 8765 }) // 既定 8765（8080 は Docker 等と衝突しやすい）
 const input = new easymidi.Input('Playtron') // デバイス名は要確認
 
 input.on('noteon', (msg) => {

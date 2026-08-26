@@ -4,9 +4,10 @@
 // Playtron は MIDI ポートを複数見せる（例: "Playtron ポート1" / "ポート2"）。
 // 取りこぼし防止のため、条件に一致する全ポートを同時に開く。
 //
-//   起動:      npm run bridge
+//   起動:      npm run bridge          … localhost 限定（既定）
+//   LAN 公開:  npm run bridge:lan      … 同一 Wi-Fi のスマホ（Even Hub WebView）へ配信する時
 //   別名指定:   PLAYTRON_MIDI="デバイス名の一部" npm run bridge
-//   ポート等:   WS_PORT=8080（既定） / WS_HOST=127.0.0.1（既定・localhost 限定）
+//   ポート等:   WS_PORT=8765（既定。8080 は Docker 等と衝突しやすいため回避） / WS_HOST=127.0.0.1（既定）
 //
 // 配信メッセージ（JSON）:
 //   { type:'noteon',  note:0-127, velocity:0-127, channel:0-15, port:'Playtron ポート1' }
@@ -17,14 +18,20 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import easymidi from 'easymidi'
 
-const WS_PORT = Number(process.env.WS_PORT) || 8080
-const WS_HOST = process.env.WS_HOST || '127.0.0.1'
+const WS_PORT = Number(process.env.WS_PORT) || 8765
+// --lan: 同一 LAN 内（Wi-Fi / スマホテザリング）へ公開。スマホの Even Hub WebView に
+// ノートを届ける時に使う。インターネットには公開しない（SECURITY.md §2）
+const LAN = process.argv.includes('--lan')
+const WS_HOST = process.env.WS_HOST || (LAN ? '0.0.0.0' : '127.0.0.1')
 const DEVICE_OVERRIDE = process.env.PLAYTRON_MIDI || ''
 
-// --- WebSocket サーバー（localhost 限定。SECURITY.md §2）---
+// --- WebSocket サーバー（既定 localhost 限定・--lan で LAN 内限定。SECURITY.md §2）---
 const wss = new WebSocketServer({ host: WS_HOST, port: WS_PORT })
 
-wss.on('listening', () => console.log(`[WS] listening on ws://${WS_HOST}:${WS_PORT}`))
+wss.on('listening', () => {
+  console.log(`[WS] listening on ws://${WS_HOST}:${WS_PORT}`)
+  if (LAN) console.log('[WS] --lan: 同一 LAN 内の端末から接続できます（セッション中のみ起動しておくこと）')
+})
 wss.on('connection', () => console.log(`[WS] client connected (clients: ${wss.clients.size})`))
 wss.on('error', (err) => console.error('[WS] error:', err.message))
 
